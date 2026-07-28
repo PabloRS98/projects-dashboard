@@ -30,7 +30,7 @@
     <div class="toolbar">
         <div class="chips">
             {% for key, label in filtros %}
-            <a href="/?filtro={{ key }}{% if tag %}&tag={{ tag }}{% endif %}" class="{{ 'active' if filtro == key else '' }}">{{ label }}
+            <a href="/?filtro={{ key }}{% if tag %}&tag={{ tag|urlencode }}{% endif %}" class="{{ 'active' if filtro == key else '' }}">{{ label }}
                 {%- if key == "ruta-perdida" and summary.rutas_perdidas %} ({{ summary.rutas_perdidas }}){% endif %}</a>
             {% endfor %}
         </div>
@@ -49,7 +49,7 @@
         {{ icon("tags", 14) }}
         <a href="/?filtro={{ filtro }}" class="{{ 'active' if not tag else '' }}">todos</a>
         {% for t in all_tags %}
-        <a href="/?filtro={{ filtro }}&tag={{ t }}" class="{{ 'active' if tag == t else '' }}">{{ t }}</a>
+        <a href="/?filtro={{ filtro }}&tag={{ t|urlencode }}" class="{{ 'active' if tag == t else '' }}">{{ t }}</a>
         {% endfor %}
     </div>
     {% endif %}
@@ -62,10 +62,6 @@
 {% for p in items %}
     {% set dias = p.days_since_commit() %}
     {% set parado = dias is not none and dias > stale_days and not p.is_archived %}
-    {% set repo_url = None %}
-    {% if p.remote_provider == 'github' and p.remote_repo %}{% set repo_url = 'https://github.com/' ~ p.remote_repo %}
-    {% elif p.remote_provider == 'gitlab' and p.remote_repo %}{% set repo_url = 'https://gitlab.com/' ~ p.remote_repo %}
-    {% elif p.remote_provider == 'bitbucket' and p.remote_repo %}{% set repo_url = 'https://bitbucket.org/' ~ p.remote_repo %}{% endif %}
     <div class="card project-card {{ 'archived' if p.is_archived else '' }}">
         <div class="project-header">
             <strong>
@@ -119,11 +115,11 @@
             {% if p.todo_count is not none %}<span class="tag {{ 'warning' if p.todo_count else '' }}">{{ icon("list-todo", 12) }} {{ p.todo_count }} TODOs</span>{% endif %}
         </div>
 
-        {% if p.homepage_url or repo_url or p.tag_list() %}
+        {% if p.homepage_url or p.repo_url or p.tag_list() %}
         <div class="card-links">
             {% if p.homepage_url %}<a class="tag accent" href="{{ p.homepage_url }}" target="_blank" rel="noopener">{{ icon("external-link", 12) }} web</a>{% endif %}
-            {% if repo_url %}<a class="tag" href="{{ repo_url }}" target="_blank" rel="noopener">{{ icon("git-branch", 12) }} repo</a>{% endif %}
-            {% for t in p.tag_list() %}<a class="tag" href="/?filtro={{ filtro }}&tag={{ t }}">{{ icon("tag", 11) }} {{ t }}</a>{% endfor %}
+            {% if p.repo_url %}<a class="tag" href="{{ p.repo_url }}" target="_blank" rel="noopener">{{ icon("git-branch", 12) }} repo</a>{% endif %}
+            {% for t in p.tag_list() %}<a class="tag" href="/?filtro={{ filtro }}&tag={{ t|urlencode }}">{{ icon("tag", 11) }} {{ t }}</a>{% endfor %}
         </div>
         {% endif %}
 

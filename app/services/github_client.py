@@ -2,7 +2,7 @@
 descripción y web del repo (para el escaparate) y antigüedad del PR abierto más viejo."""
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -20,7 +20,7 @@ def _days_since(iso: str | None) -> int | None:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
-    return (datetime.now(timezone.utc) - dt).days
+    return (datetime.now(UTC) - dt).days
 
 
 def _headers() -> dict:

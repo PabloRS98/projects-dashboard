@@ -4,7 +4,7 @@ Ambos corren también poco después de arrancar (si no, el panel sale con datos 
 import logging
 import os
 import sqlite3
-from datetime import datetime, timedelta, date
+from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 

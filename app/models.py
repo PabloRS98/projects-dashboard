@@ -1,15 +1,21 @@
 """Modelos de datos: proyectos (locales y/o remotos) y checklist de tareas propias."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import String, Integer, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 
+REPO_BASE_URLS = {
+    "github": "https://github.com/",
+    "gitlab": "https://gitlab.com/",
+    "bitbucket": "https://bitbucket.org/",
+}
+
 
 def utcnow() -> datetime:
     """UTC naive (compatible con las filas ya guardadas); evita datetime.utcnow(), deprecado en 3.12."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Project(Base):
@@ -36,6 +42,9 @@ class Project(Base):
     stars: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ci_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     todo_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # SHA del commit en el que se contaron los TODOs por última vez. Permite
+    # saltarse el recorrido del árbol cuando el repo no ha cambiado.
+    todo_scanned_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Añadido en v2 (migrado con ensure_columns): la ruta local configurada ya no existe
     local_path_missing: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -43,9 +52,11 @@ class Project(Base):
     # --- v3 (rediseño a medida): organización + escaparate + dedup de avisos ---
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False)   # ★ fijado arriba
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)   # oculto del grupo activo
-    tags: Mapped[str] = mapped_column(String(255), default="")          # categorías propias, separadas por coma
+    # Categorías propias del usuario, separadas por coma
+    tags: Mapped[str] = mapped_column(String(255), default="")
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)   # autofill GitHub, editable
-    homepage_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # web/deploy, autofill GitHub, editable
+    # Web/deploy: autorrellenado desde GitHub, editable por el usuario
+    homepage_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Edad (días) del PR abierto más viejo, para detectar PR estancado
     oldest_open_pr_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Flags para no repetir avisos de Telegram (se resetean cuando la condición desaparece)
@@ -73,6 +84,18 @@ class Project(Base):
 
     def tag_list(self) -> list[str]:
         return [t.strip() for t in (self.tags or "").split(",") if t.strip()]
+
+    @property
+    def repo_url(self) -> str | None:
+        """URL pública del repo remoto, o None si no hay remoto configurado.
+
+        Vive en el modelo (y no en el router) porque las tarjetas del dashboard
+        la necesitan una por proyecto dentro del bucle: como variable de contexto
+        solo existía en la ficha de detalle y en el dashboard quedaba indefinida,
+        de modo que el enlace no llegaba a pintarse nunca.
+        """
+        base = REPO_BASE_URLS.get(self.remote_provider or "")
+        return base + self.remote_repo if base and self.remote_repo else None
 
     @property
     def sync_error(self) -> str | None:

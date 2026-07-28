@@ -2,7 +2,7 @@
 import os
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
 
@@ -68,4 +68,6 @@ def init_db():
         "pr_stale_notified": "BOOLEAN NOT NULL DEFAULT 0",
         "local_error": "VARCHAR(500)",
         "remote_error": "VARCHAR(500)",
+        # v4: cachea el SHA del último conteo de TODOs
+        "todo_scanned_sha": "VARCHAR(64)",
     })

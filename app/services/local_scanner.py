@@ -123,7 +123,7 @@ def read_readme(path: str, max_chars: int = 40000) -> str | None:
         if not candidates:
             return None
         candidates.sort(key=lambda e: (not e.lower().endswith(".md"), e.lower()))
-        with open(os.path.join(path, candidates[0]), "r", encoding="utf-8", errors="ignore") as f:
+        with open(os.path.join(path, candidates[0]), encoding="utf-8", errors="ignore") as f:
             return f.read(max_chars)
     except Exception:
         logger.exception("Fallo al leer el README de %s", path)
@@ -145,7 +145,7 @@ def scan_todos(path: str, max_results: int = 500) -> dict:
                 continue
             file_path = os.path.join(dirpath, filename)
             try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(file_path, encoding="utf-8", errors="ignore") as f:
                     for line_num, line in enumerate(f, start=1):
                         if "TODO" in line or "FIXME" in line:
                             count += 1

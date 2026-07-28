@@ -1,0 +1,17 @@
+services:
+  dashboard:
+    build: .
+    container_name: projects-dashboard
+    restart: unless-stopped
+    ports:
+      # Solo loopback: para exponerlo, ponlo detrás de un proxy inverso con TLS
+      # o accede por VPN. No lo publiques directamente en 0.0.0.0.
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Base de datos y backups (persistente)
+      - ./data:/data
+      # Tus repositorios locales. Ajusta la ruta del host a la tuya.
+      # :ro porque la app solo lee: nunca escribe en tus repos.
+      - ${LOCAL_REPOS_HOST_PATH:-~/repos}:/repos:ro
