@@ -2,7 +2,8 @@
 desaparecidas), filtros, resumen agregado, sincronización y checklist de tareas."""
 import os
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import verify_auth
@@ -10,20 +11,10 @@ from ..config import settings
 from ..database import get_db
 from ..flash import redirect_flash
 from ..models import Project, TaskItem
+from ..security import safe_external_url
 from ..services import local_scanner, readme
 from ..services.sync import normalize_remote_repo, sync_project
 from ..templating import templates
-
-REPO_BASE_URLS = {
-    "github": "https://github.com/",
-    "gitlab": "https://gitlab.com/",
-    "bitbucket": "https://bitbucket.org/",
-}
-
-
-def _repo_url(project: Project) -> str | None:
-    base = REPO_BASE_URLS.get(project.remote_provider or "")
-    return base + project.remote_repo if base and project.remote_repo else None
 
 router = APIRouter(tags=["proyectos"], dependencies=[Depends(verify_auth)])
 
@@ -79,7 +70,8 @@ def list_projects(request: Request, filtro: str = "todos", tag: str | None = Non
     # Cada proyecto cae en exactamente un grupo: favoritos (no archivados) arriba,
     # luego activos / parados, y los archivados al final.
     favoritos = [p for p in projects if p.is_favorite and not p.is_archived]
-    activos = [p for p in projects if not p.is_favorite and not p.is_archived and not _is_stale(p, stale_days)]
+    activos = [p for p in projects
+               if not p.is_favorite and not p.is_archived and not _is_stale(p, stale_days)]
     parados = [p for p in projects if not p.is_favorite and not p.is_archived and _is_stale(p, stale_days)]
     archivados = [p for p in projects if p.is_archived]
     groups = [
@@ -122,7 +114,6 @@ def project_detail(project_id: int, request: Request, db: Session = Depends(get_
         "commits": commits,
         "todos": todos,
         "readme_html": readme.render(readme_raw) if readme_raw else None,
-        "repo_url": _repo_url(project),
         "stale_days": settings.stale_project_days,
         "stale_pr_days": settings.stale_pr_days,
     })
@@ -146,7 +137,7 @@ def create_project(
         remote_repo=normalize_remote_repo(remote_repo),
         tags=_clean_tags(tags),
         description=description.strip() or None,
-        homepage_url=homepage_url.strip() or None,
+        homepage_url=safe_external_url(homepage_url),
     )
     db.add(project)
     db.commit()
@@ -178,7 +169,7 @@ def edit_project(
     project.remote_repo = normalize_remote_repo(remote_repo)
     project.tags = _clean_tags(tags)
     project.description = description.strip() or None
-    project.homepage_url = homepage_url.strip() or None
+    project.homepage_url = safe_external_url(homepage_url)
     sync_project(project)
     db.commit()
     referer = request.headers.get("referer") or "/"
@@ -291,15 +282,28 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 # ---- Tareas: endpoints HTMX que devuelven el fragmento actualizado ----
 
 def _tasks_fragment(request: Request, db: Session, project_id: int):
+    """Fragmento con la checklist, o 404 si el proyecto ya no existe.
+
+    Devolver 404 en lugar de renderizar con `p=None` es lo que quiere HTMX: por
+    defecto no intercambia contenido en respuestas de error, así que la lista
+    que ya está en pantalla se queda como está en vez de vaciarse.
+    """
     project = db.get(Project, project_id)
+    if not project:
+        return Response(status_code=404)
     return templates.TemplateResponse(request, "_tasks.html", {"p": project})
 
 
 @router.post("/{project_id}/tareas")
 def add_task(request: Request, project_id: int, text: str = Form(...), db: Session = Depends(get_db)):
     if text.strip():
-        max_order = db.query(TaskItem).filter(TaskItem.project_id == project_id).count()
-        db.add(TaskItem(project_id=project_id, text=text.strip(), order=max_order))
+        # max(order)+1, no count(): con count(), borrar una tarea intermedia hace
+        # que la siguiente nazca con un `order` que ya existe.
+        current_max = db.query(func.max(TaskItem.order)).filter(
+            TaskItem.project_id == project_id
+        ).scalar()
+        next_order = (current_max + 1) if current_max is not None else 0
+        db.add(TaskItem(project_id=project_id, text=text.strip(), order=next_order))
         db.commit()
     return _tasks_fragment(request, db, project_id)
 
@@ -307,7 +311,9 @@ def add_task(request: Request, project_id: int, text: str = Form(...), db: Sessi
 @router.post("/tareas/{task_id}/toggle")
 def toggle_task(request: Request, task_id: int, db: Session = Depends(get_db)):
     task = db.get(TaskItem, task_id)
-    project_id = task.project_id if task else 0
+    if task is None:
+        return Response(status_code=404)
+    project_id = task.project_id
     if task:
         task.done = not task.done
         db.commit()
@@ -317,7 +323,9 @@ def toggle_task(request: Request, task_id: int, db: Session = Depends(get_db)):
 @router.post("/tareas/{task_id}/eliminar")
 def delete_task(request: Request, task_id: int, db: Session = Depends(get_db)):
     task = db.get(TaskItem, task_id)
-    project_id = task.project_id if task else 0
+    if task is None:
+        return Response(status_code=404)
+    project_id = task.project_id
     if task:
         db.delete(task)
         db.commit()

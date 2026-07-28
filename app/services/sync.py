@@ -11,7 +11,8 @@ import re
 from datetime import datetime
 
 from ..models import Project, utcnow
-from . import local_scanner, github_client, gitlab_client, bitbucket_client
+from ..security import safe_external_url
+from . import bitbucket_client, github_client, gitlab_client, local_scanner
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,22 @@ REMOTE_CLIENTS = {
     "bitbucket": bitbucket_client,
 }
 
+# 'owner/repo', admitiendo subgrupos anidados de GitLab ('grupo/sub/repo').
+# Cada segmento se limita a caracteres válidos en un nombre de repo, lo que de
+# paso descarta '.' y '..': el valor se interpola en la ruta de la URL de la API
+# y, sin este filtro, un 'owner/repo/../../../user' salía de /repos/ y llegaba a
+# otro endpoint distinto llevándose el token en la cabecera.
+_REPO_SEGMENT = r"[A-Za-z0-9_][A-Za-z0-9._-]*"
+VALID_REMOTE_REPO = re.compile(r"^%s(?:/%s)+$" % (_REPO_SEGMENT, _REPO_SEGMENT))
+
 
 def normalize_remote_repo(spec: str | None) -> str | None:
     """Devuelve la ruta 'owner/repo' que esperan los clientes de API a partir de lo
     que escriba el usuario: 'owner/repo', URL https (https://github.com/owner/repo[.git])
-    o remoto SSH (git@github.com:owner/repo.git). Conserva rutas anidadas (grupos de GitLab)."""
+    o remoto SSH (git@github.com:owner/repo.git). Conserva rutas anidadas (grupos de GitLab).
+
+    Devuelve None si el resultado no tiene forma de 'owner/repo' válido.
+    """
     if not spec:
         return None
     spec = spec.strip()
@@ -38,7 +50,9 @@ def normalize_remote_repo(spec: str | None) -> str | None:
     spec = spec.strip("/")
     if spec.endswith(".git"):
         spec = spec[:-4]
-    return spec or None
+    if not spec or not VALID_REMOTE_REPO.match(spec):
+        return None
+    return spec
 
 
 def _parse_remote_date(value: str | None):
@@ -72,8 +86,22 @@ def sync_local(project: Project) -> None:
     project.last_commit_date = local_info.get("last_commit_date")
     project.has_uncommitted_changes = local_info.get("has_uncommitted_changes", False)
 
-    todo_info = local_scanner.scan_todos(project.local_path)
-    project.todo_count = todo_info.get("count", 0)
+    # scan_todos recorre el árbol entero leyendo cada fichero línea a línea, y
+    # este ciclo corre cada pocos minutos por proyecto. El conteo solo puede
+    # cambiar si cambió el código, así que se reaprovecha mientras el HEAD sea
+    # el mismo. Con cambios sin commitear se rescanea igualmente: ahí el SHA no
+    # se mueve pero el contenido sí.
+    sha = project.last_commit_sha
+    needs_scan = (
+        project.todo_count is None
+        or not sha
+        or project.todo_scanned_sha != sha
+        or project.has_uncommitted_changes
+    )
+    if needs_scan:
+        todo_info = local_scanner.scan_todos(project.local_path)
+        project.todo_count = todo_info.get("count", 0)
+        project.todo_scanned_sha = sha
 
 
 def sync_remote(project: Project) -> None:
@@ -83,7 +111,11 @@ def sync_remote(project: Project) -> None:
         return
 
     # Auto-corrige remotos guardados como URL completa (datos previos a la normalización)
-    project.remote_repo = normalize_remote_repo(project.remote_repo)
+    normalized = normalize_remote_repo(project.remote_repo)
+    if not normalized:
+        project.remote_error = "Remoto inválido: se espera 'owner/repo'"
+        return
+    project.remote_repo = normalized
 
     client_module = REMOTE_CLIENTS.get(project.remote_provider)
     if not client_module:
@@ -105,8 +137,10 @@ def sync_remote(project: Project) -> None:
     # Escaparate: autorrellenar descripción y web SOLO si están vacías (los edita el usuario)
     if not project.description and remote_info.get("description"):
         project.description = remote_info["description"]
-    if not project.homepage_url and remote_info.get("homepage"):
-        project.homepage_url = remote_info["homepage"]
+    if not project.homepage_url:
+        # La homepage viene de la API remota y acaba en un href, así que se
+        # valida el esquema igual que si la hubiera escrito el usuario.
+        project.homepage_url = safe_external_url(remote_info.get("homepage"))
 
     # Si no hay copia local, usamos los datos de commit/rama del remoto
     if not project.local_path:

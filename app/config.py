@@ -1,5 +1,9 @@
-"""Configuracion centralizada via variables de entorno (.env)."""
+"""Configuración centralizada vía variables de entorno (.env)."""
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_PASSWORD = "changeme"
+MIN_PASSWORD_LENGTH = 8
 
 
 class Settings(BaseSettings):
@@ -7,10 +11,10 @@ class Settings(BaseSettings):
 
     app_name: str = "Dashboard de Proyectos"
 
-    # Autenticacion HTTP Basic opcional (recomendado activar si se expone via VPN)
+    # Autenticación HTTP Basic opcional (recomendado activar si se expone vía VPN)
     enable_auth: bool = False
     auth_username: str = "admin"
-    auth_password: str = "changeme"
+    auth_password: str = DEFAULT_PASSWORD
 
     # Base de datos SQLite
     db_path: str = "/data/projects.db"
@@ -29,10 +33,9 @@ class Settings(BaseSettings):
     gitlab_token: str = ""
     bitbucket_token: str = ""  # formato: usuario:app_password
 
-    # Frecuencia de sincronizacion automatica en segundo plano.
-    # v3: se parte en dos ciclos (git local barato y frecuente, API remota espaciada
-    # para no chocar con los limites de GitHub).
-    sync_interval_minutes: int = 30  # legado (fallback); v3 usa los dos de abajo
+    # Frecuencia de sincronización automática en segundo plano: dos ciclos
+    # separados (git local barato y frecuente, API remota espaciada para no
+    # chocar con los límites de GitHub).
     local_sync_minutes: int = 15
     remote_sync_minutes: int = 60
 
@@ -46,6 +49,33 @@ class Settings(BaseSettings):
     # Avisos por Telegram (opcional): crea un bot con @BotFather. Vacio = sin avisos.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+
+    # Hosts extra admitidos como origen de las peticiones (comprobación CSRF).
+    # Solo hace falta si accedes por un nombre distinto al del proxy inverso.
+    trusted_origins: str = ""
+
+    @model_validator(mode="after")
+    def _reject_insecure_password(self) -> "Settings":
+        """Con la autenticación activada, no arrancar con la contraseña de fábrica.
+
+        Un fallo al arrancar es ruidoso y se corrige en un minuto; una app
+        expuesta con admin/changeme puede pasar meses sin que nadie lo note.
+        """
+        if not self.enable_auth:
+            return self
+        if self.auth_password == DEFAULT_PASSWORD:
+            raise ValueError(
+                "ENABLE_AUTH está activado pero AUTH_PASSWORD sigue siendo el valor "
+                "de fábrica. Cámbialo en el .env antes de exponer la aplicación."
+            )
+        if len(self.auth_password) < MIN_PASSWORD_LENGTH:
+            raise ValueError(
+                "AUTH_PASSWORD debe tener al menos %d caracteres." % MIN_PASSWORD_LENGTH
+            )
+        return self
+
+    def trusted_origin_hosts(self) -> set[str]:
+        return {h.strip() for h in self.trusted_origins.split(",") if h.strip()}
 
 
 settings = Settings()

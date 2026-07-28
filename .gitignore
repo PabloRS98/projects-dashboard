@@ -1,6 +1,8 @@
 # Datos sensibles
 .env
 .env.*
+# ...salvo la plantilla de ejemplo, que sí se versiona (no lleva secretos)
+!.env.example
 *.db
 *.sqlite
 *.sqlite3
@@ -14,6 +16,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Datos locales (volumen de docker-compose)
+/data/
 
 # IDE
 .vscode/

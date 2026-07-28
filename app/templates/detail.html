@@ -30,9 +30,9 @@
     {% endif %}
 
     <div class="card-links">
-        {% if repo_url %}<a class="tag" href="{{ repo_url }}" target="_blank" rel="noopener">{{ icon("git-branch", 12) }} {{ p.remote_provider }} · {{ p.remote_repo }}</a>{% endif %}
+        {% if p.repo_url %}<a class="tag" href="{{ p.repo_url }}" target="_blank" rel="noopener">{{ icon("git-branch", 12) }} {{ p.remote_provider }} · {{ p.remote_repo }}</a>{% endif %}
         {% if p.homepage_url %}<a class="tag accent" href="{{ p.homepage_url }}" target="_blank" rel="noopener">{{ icon("external-link", 12) }} web</a>{% endif %}
-        {% for t in p.tag_list() %}<a class="tag" href="/?tag={{ t }}">{{ icon("tag", 11) }} {{ t }}</a>{% endfor %}
+        {% for t in p.tag_list() %}<a class="tag" href="/?tag={{ t|urlencode }}">{{ icon("tag", 11) }} {{ t }}</a>{% endfor %}
     </div>
 
     {% if p.local_path and not p.local_path_missing %}
