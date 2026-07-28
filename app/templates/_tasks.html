@@ -1,0 +1,23 @@
+{# Fragmento HTMX: checklist de tareas de un proyecto (se re-renderiza al marcar/añadir/borrar) #}
+{% from "_icons.html" import icon %}
+<ul class="task-list">
+{% for t in p.tasks %}
+    <li>
+        <button type="button" class="task-toggle" title="{{ 'Desmarcar' if t.done else 'Marcar como hecha' }}"
+                hx-post="/tareas/{{ t.id }}/toggle" hx-target="#tasks-{{ p.id }}" hx-swap="innerHTML">
+            {{ icon("circle-check", 15) if t.done else icon("circle-dot", 15) }}
+        </button>
+        <span class="{{ 'done' if t.done else '' }}">{{ t.text }}</span>
+        <button type="button" class="danger small icon-btn" style="margin-left:auto" title="Eliminar tarea"
+                hx-post="/tareas/{{ t.id }}/eliminar" hx-target="#tasks-{{ p.id }}" hx-swap="innerHTML">
+            {{ icon("x", 12) }}
+        </button>
+    </li>
+{% else %}
+    <li class="subtle">Sin tareas.</li>
+{% endfor %}
+</ul>
+<form class="inline-form" hx-post="/{{ p.id }}/tareas" hx-target="#tasks-{{ p.id }}" hx-swap="innerHTML">
+    <input type="text" name="text" placeholder="Nueva tarea" required class="grow" style="flex:1">
+    <button type="submit" class="ghost small">{{ icon("plus", 13) }} Añadir</button>
+</form>

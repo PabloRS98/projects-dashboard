@@ -1,0 +1,26 @@
+# Datos sensibles
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+*.token
+*secret*
+*credential*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

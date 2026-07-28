@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Dashboard de Proyectos{% endblock %}
+{% block content %}
+
+<section class="grid-summary">
+    <div class="card stat">
+        <span class="stat-head">{{ icon("folder-git-2", 16) }} Proyectos</span>
+        <p class="big-number">{{ summary.total }}</p>
+    </div>
+    <div class="card stat {{ 'negative' if summary.parados else '' }}">
+        <span class="stat-head">{{ icon("moon", 16) }} Parados</span>
+        <p class="big-number {{ 'negative' if summary.parados else '' }}">{{ summary.parados }}</p>
+    </div>
+    <a class="card stat" href="/?filtro=cambios" style="text-decoration:none">
+        <span class="stat-head">{{ icon("git-branch", 16) }} Sin commitear</span>
+        <p class="big-number {{ 'negative' if summary.cambios else '' }}">{{ summary.cambios }}</p>
+    </a>
+    <a class="card stat" href="/?filtro=prs" style="text-decoration:none">
+        <span class="stat-head">{{ icon("git-pull-request", 16) }} PRs abiertos</span>
+        <p class="big-number">{{ summary.prs }}</p>
+    </a>
+    <a class="card stat" href="/?filtro=errores" style="text-decoration:none">
+        <span class="stat-head">{{ icon("triangle-alert", 16) }} Errores de sync</span>
+        <p class="big-number {{ 'negative' if summary.errores else 'positive' }}">{{ summary.errores }}</p>
+    </a>
+</section>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="chips">
+            {% for key, label in filtros %}
+            <a href="/?filtro={{ key }}{% if tag %}&tag={{ tag }}{% endif %}" class="{{ 'active' if filtro == key else '' }}">{{ label }}
+                {%- if key == "ruta-perdida" and summary.rutas_perdidas %} ({{ summary.rutas_perdidas }}){% endif %}</a>
+            {% endfor %}
+        </div>
+        <span class="grow"></span>
+        <form method="post" action="/sincronizar-todo">
+            <button type="submit" class="ghost small">{{ icon("refresh-cw", 14) }} Sincronizar todo</button>
+        </form>
+        <form method="post" action="/escanear">
+            <button type="submit" class="ghost small" title="Busca repos git en {{ scan_path }} y detecta rutas desaparecidas">
+                {{ icon("search", 14) }} Escanear {{ scan_path }}
+            </button>
+        </form>
+    </div>
+    {% if all_tags %}
+    <div class="chips" style="margin-top:.5rem">
+        {{ icon("tags", 14) }}
+        <a href="/?filtro={{ filtro }}" class="{{ 'active' if not tag else '' }}">todos</a>
+        {% for t in all_tags %}
+        <a href="/?filtro={{ filtro }}&tag={{ t }}" class="{{ 'active' if tag == t else '' }}">{{ t }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
+{% if groups %}
+{% for title, gicon, items in groups %}
+<div class="group-head {{ title|lower }}">{{ icon(gicon, 16) }} {{ title }} <span class="count">{{ items|length }}</span></div>
+<div class="group-cards">
+{% for p in items %}
+    {% set dias = p.days_since_commit() %}
+    {% set parado = dias is not none and dias > stale_days and not p.is_archived %}
+    {% set repo_url = None %}
+    {% if p.remote_provider == 'github' and p.remote_repo %}{% set repo_url = 'https://github.com/' ~ p.remote_repo %}
+    {% elif p.remote_provider == 'gitlab' and p.remote_repo %}{% set repo_url = 'https://gitlab.com/' ~ p.remote_repo %}
+    {% elif p.remote_provider == 'bitbucket' and p.remote_repo %}{% set repo_url = 'https://bitbucket.org/' ~ p.remote_repo %}{% endif %}
+    <div class="card project-card {{ 'archived' if p.is_archived else '' }}">
+        <div class="project-header">
+            <strong>
+                <form method="post" action="/{{ p.id }}/favorito">
+                    <button type="submit" class="ghost small icon-btn star-btn {{ 'on' if p.is_favorite else '' }}" title="{{ 'Quitar de favoritos' if p.is_favorite else 'Marcar favorito' }}">{{ icon("star", 14) }}</button>
+                </form>
+                {% if p.ci_status %}
+                <span class="ci-dot {{ 'ok' if p.ci_status in ('success', 'passed') else ('bad' if p.ci_status in ('failure', 'failed', 'error') else 'run') }}"
+                      title="CI: {{ p.ci_status }}"></span>
+                {% endif %}
+                <a href="/proyecto/{{ p.id }}" style="text-decoration:none; color:inherit">{{ p.name }}</a>
+            </strong>
+            <form method="post" action="/{{ p.id }}/sincronizar">
+                <button type="submit" class="ghost small icon-btn" title="Sincronizar ahora">{{ icon("refresh-cw", 14) }}</button>
+            </form>
+        </div>
+
+        {% if p.description %}<p class="project-desc">{{ p.description }}</p>{% endif %}
+
+        {% if p.local_path_missing %}
+        <p class="hint negative">{{ icon("folder-x", 14) }} La ruta local ya no existe: <code>{{ p.local_path }}</code></p>
+        {% elif p.sync_error %}
+        <p class="hint negative">{{ icon("triangle-alert", 14) }} {{ p.sync_error }}</p>
+        {% endif %}
+
+        {% if p.local_path and not p.local_path_missing %}
+        <p class="subtle" style="margin:0">{{ icon("folder-git-2", 13) }} <code>{{ p.local_path }}</code></p>
+        {% endif %}
+        {% if p.remote_repo %}
+        <p class="subtle" style="margin:0">{{ icon("git-branch", 13) }} {{ p.remote_provider }} · {{ p.remote_repo }}</p>
+        {% endif %}
+
+        {% if p.branch %}
+        <p class="hint" style="margin:.1rem 0">
+            Rama <strong>{{ p.branch }}</strong>
+            {% if p.has_uncommitted_changes %}<span class="tag negative">{{ icon("pencil", 11) }} sin commitear</span>{% endif %}
+            {% if parado %}<span class="tag warning">{{ icon("moon", 11) }} parado {{ dias }}d</span>{% endif %}
+        </p>
+        {% endif %}
+        {% if p.last_commit_message %}
+        <p class="hint" style="margin:0">
+            «{{ p.last_commit_message|truncate(70) }}»
+            <span class="subtle">· {{ p.last_commit_date|timeago if p.last_commit_date else "?" }}</span>
+        </p>
+        {% endif %}
+
+        <div class="badges">
+            {% if p.open_prs is not none %}<span class="tag {{ 'accent' if p.open_prs else '' }}">{{ icon("git-pull-request", 12) }} {{ p.open_prs }} PRs{% if p.oldest_open_pr_days is not none and p.oldest_open_pr_days > stale_pr_days %} · {{ p.oldest_open_pr_days }}d{% endif %}</span>{% endif %}
+            {% if p.open_issues is not none %}<span class="tag">{{ icon("circle-dot", 12) }} {{ p.open_issues }} issues</span>{% endif %}
+            {% if p.stars is not none %}<span class="tag">{{ icon("star", 12) }} {{ p.stars }}</span>{% endif %}
+            {% if p.todo_count is not none %}<span class="tag {{ 'warning' if p.todo_count else '' }}">{{ icon("list-todo", 12) }} {{ p.todo_count }} TODOs</span>{% endif %}
+        </div>
+
+        {% if p.homepage_url or repo_url or p.tag_list() %}
+        <div class="card-links">
+            {% if p.homepage_url %}<a class="tag accent" href="{{ p.homepage_url }}" target="_blank" rel="noopener">{{ icon("external-link", 12) }} web</a>{% endif %}
+            {% if repo_url %}<a class="tag" href="{{ repo_url }}" target="_blank" rel="noopener">{{ icon("git-branch", 12) }} repo</a>{% endif %}
+            {% for t in p.tag_list() %}<a class="tag" href="/?filtro={{ filtro }}&tag={{ t }}">{{ icon("tag", 11) }} {{ t }}</a>{% endfor %}
+        </div>
+        {% endif %}
+
+        <details>
+            <summary>{{ icon("list-todo", 14) }} Notas y tareas
+                {%- set pending_tasks = p.tasks|rejectattr("done")|list|length %}
+                {%- if pending_tasks %} <span class="tag accent">{{ pending_tasks }}</span>{% endif %}
+            </summary>
+            <form method="post" action="/{{ p.id }}/notas">
+                <textarea name="notes" placeholder="Notas (markdown libre)">{{ p.notes }}</textarea>
+                <button type="submit" class="ghost small" style="margin-top:.4rem">{{ icon("check", 13) }} Guardar notas</button>
+            </form>
+            <div id="tasks-{{ p.id }}" style="margin-top:.6rem">
+                {% include "_tasks.html" %}
+            </div>
+        </details>
+
+        <div class="toolbar" style="margin-top:auto">
+            <a class="subtle" href="/proyecto/{{ p.id }}" style="text-decoration:none">{{ icon("book-open", 12) }} ficha</a>
+            <span class="subtle">· {{ icon("clock", 12) }} {{ p.last_synced_at|timeago }}</span>
+            <span class="grow"></span>
+            <form method="post" action="/{{ p.id }}/archivar">
+                <button type="submit" class="ghost small icon-btn" title="{{ 'Desarchivar' if p.is_archived else 'Archivar' }}">{{ icon("archive", 13) }}</button>
+            </form>
+            <button type="button" class="ghost small" data-open-dialog="#dlg-project-{{ p.id }}">{{ icon("pencil", 13) }} Editar</button>
+            <form method="post" action="/{{ p.id }}/eliminar" data-confirm="¿Eliminar el proyecto &quot;{{ p.name }}&quot; del dashboard? (no toca el repo)">
+                <button type="submit" class="danger small icon-btn" title="Eliminar">{{ icon("trash-2", 13) }}</button>
+            </form>
+        </div>
+    </div>
+{% endfor %}
+</div>
+{% endfor %}
+{% else %}
+<section class="card">
+    <div class="empty">{{ icon("inbox", 30) }}
+        {% if filtro != "todos" or tag %}Ningún proyecto cumple el filtro.{% else %}Sin proyectos aún: escanea tu carpeta de repos o añade uno a mano.{% endif %}
+    </div>
+</section>
+{% endif %}
+
+<section class="card">
+    <h3>{{ icon("plus") }} Añadir proyecto a mano</h3>
+    <form method="post" action="/nuevo" class="form-grid">
+        <div class="field">
+            <label for="p-name">Nombre</label>
+            <input id="p-name" type="text" name="name" placeholder="mi-proyecto" required>
+        </div>
+        <div class="field">
+            <label for="p-path">Ruta local (opcional)</label>
+            <input id="p-path" type="text" name="local_path" placeholder="{{ scan_path }}/mi-proyecto">
+        </div>
+        <div class="field">
+            <label for="p-provider">Remoto</label>
+            <select id="p-provider" name="remote_provider">
+                <option value="">Sin remoto</option>
+                <option value="github">GitHub</option>
+                <option value="gitlab">GitLab</option>
+                <option value="bitbucket">Bitbucket</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="p-repo">owner/repo (si aplica)</label>
+            <input id="p-repo" type="text" name="remote_repo" placeholder="pablo/mi-proyecto">
+        </div>
+        <div class="field full">
+            <label for="p-desc">Descripción (se autorrellena desde GitHub si la dejas vacía)</label>
+            <input id="p-desc" type="text" name="description" placeholder="Una línea de qué es el proyecto">
+        </div>
+        <div class="field">
+            <label for="p-web">Web / deploy (opcional)</label>
+            <input id="p-web" type="url" name="homepage_url" placeholder="https://...">
+        </div>
+        <div class="field">
+            <label for="p-tags">Tags (separados por coma)</label>
+            <input id="p-tags" type="text" name="tags" placeholder="web, cli, cliente...">
+        </div>
+        <button type="submit">{{ icon("plus", 15) }} Añadir</button>
+    </form>
+    <p class="hint" style="margin-top:.7rem">Puedes añadir un proyecto <strong>solo-remoto</strong> (sin ruta local) para el escaparate: deja la ruta vacía y pon el remoto. La ruta local es la de DENTRO del contenedor: tus repos están en <code>{{ scan_path }}</code>.</p>
+</section>
+
+{% for title, gicon, items in groups %}{% for p in items %}
+<dialog id="dlg-project-{{ p.id }}">
+    <h3>{{ icon("pencil") }} Editar proyecto</h3>
+    <form method="post" action="/{{ p.id }}/editar" class="form-grid">
+        <div class="field full">
+            <label>Nombre</label>
+            <input type="text" name="name" value="{{ p.name }}" required>
+        </div>
+        <div class="field full">
+            <label>Ruta local (vacío = solo-remoto)</label>
+            <input type="text" name="local_path" value="{{ p.local_path or '' }}" placeholder="{{ scan_path }}/mi-proyecto">
+        </div>
+        <div class="field">
+            <label>Remoto</label>
+            <select name="remote_provider">
+                <option value="">Sin remoto</option>
+                {% for prov in ["github", "gitlab", "bitbucket"] %}
+                <option value="{{ prov }}" {% if p.remote_provider == prov %}selected{% endif %}>{{ prov|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label>owner/repo</label>
+            <input type="text" name="remote_repo" value="{{ p.remote_repo or '' }}">
+        </div>
+        <div class="field full">
+            <label>Descripción</label>
+            <input type="text" name="description" value="{{ p.description or '' }}" placeholder="Se autorrellena desde GitHub si la dejas vacía">
+        </div>
+        <div class="field">
+            <label>Web / deploy</label>
+            <input type="url" name="homepage_url" value="{{ p.homepage_url or '' }}" placeholder="https://...">
+        </div>
+        <div class="field">
+            <label>Tags (coma)</label>
+            <input type="text" name="tags" value="{{ p.tags or '' }}" placeholder="web, cli...">
+        </div>
+        <div class="dialog-actions full">
+            <button type="button" class="ghost" data-close-dialog>Cancelar</button>
+            <button type="submit">{{ icon("check", 15) }} Guardar y resincronizar</button>
+        </div>
+    </form>
+</dialog>
+{% endfor %}{% endfor %}
+
+{% endblock %}

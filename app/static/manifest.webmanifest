@@ -1,0 +1,9 @@
+{
+  "name": "Dashboard de Proyectos",
+  "short_name": "Proyectos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#3fb88f",
+  "icons": [{ "src": "/static/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }]
+}
