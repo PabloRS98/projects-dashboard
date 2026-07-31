@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_widgets.html" import ci_dot, sparkline, estado_badges %}
+{% block title %}Panel · Proyectos{% endblock %}
+{% block content %}
+
+{# Modo pantalla: sin formularios ni acciones, para dejarlo puesto en un monitor.
+   Se recarga sola cada minuto; no hace falta tocar nada. #}
+<div class="tv" hx-get="/tv" hx-trigger="every 60s" hx-select=".tv" hx-swap="outerHTML">
+    <div class="tv-head">
+        <h2>{{ icon("layout-dashboard", 22) }} Estado de los proyectos</h2>
+        <span class="subtle">{{ icon("clock", 14) }} <span data-clock></span></span>
+    </div>
+
+    <section class="grid-summary tv-kpis">
+        <div class="card stat"><span class="stat-head">{{ icon("folder-git-2", 16) }} Proyectos</span>
+            <p class="big-number">{{ summary.total }}</p></div>
+        <div class="card stat"><span class="stat-head">{{ icon("triangle-alert", 16) }} CI en rojo</span>
+            <p class="big-number {{ 'negative' if summary.ci_rojo else 'positive' }}">{{ summary.ci_rojo }}</p></div>
+        <div class="card stat"><span class="stat-head">{{ icon("moon", 16) }} Parados</span>
+            <p class="big-number {{ 'negative' if summary.parados else 'positive' }}">{{ summary.parados }}</p></div>
+        <div class="card stat"><span class="stat-head">{{ icon("git-pull-request", 16) }} PRs abiertos</span>
+            <p class="big-number">{{ summary.prs }}</p></div>
+        <div class="card stat"><span class="stat-head">{{ icon("plug-zap", 16) }} Errores</span>
+            <p class="big-number {{ 'negative' if summary.errores else 'positive' }}">{{ summary.errores }}</p></div>
+    </section>
+
+    {% if atencion %}
+    <div class="group-head parados">{{ icon("bell-ring", 16) }} Necesitan atención <span class="count">{{ atencion|length }}</span></div>
+    <div class="tv-list">
+        {% for p in atencion %}
+        <div class="card tv-row">
+            {{ ci_dot(p.ci_status) }}
+            <strong>{{ p.name }}</strong>
+            <span class="badges">{{ estado_badges(p, stale_days, stale_pr_days) }}</span>
+            <span class="grow"></span>
+            {{ sparkline(p.week_counts(), 90, 20) }}
+            <span class="subtle">{{ p.last_commit_date|timeago if p.last_commit_date else "sin datos" }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <section class="card">
+        <div class="empty positive">{{ icon("circle-check", 30) }} Todo en orden.</div>
+    </section>
+    {% endif %}
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+    // Reloj local: el resto de la página la refresca HTMX cada minuto.
+    (function tick() {
+        document.querySelectorAll("[data-clock]").forEach(function (el) {
+            el.textContent = new Date().toLocaleTimeString();
+        });
+        setTimeout(tick, 1000);
+    })();
+</script>
+{% endblock %}

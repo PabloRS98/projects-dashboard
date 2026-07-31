@@ -5,6 +5,7 @@ from urllib.parse import quote
 import httpx
 
 from ..config import settings
+from . import forge_errors
 
 logger = logging.getLogger(__name__)
 BASE_URL = "https://gitlab.com/api/v4"
@@ -64,7 +65,9 @@ def get_repo_info(owner_repo: str) -> dict:
             pipelines = client.get(f"{BASE_URL}/projects/{project_id}/pipelines", params={"per_page": 1})
             if pipelines.status_code == 200 and pipelines.json():
                 info["ci_status"] = pipelines.json()[0].get("status")
-    except Exception:
-        logger.exception("Fallo al consultar GitLab para %s", owner_repo)
-        info["error"] = "No se pudo conectar con GitLab (revisa el nombre owner/repo o el token)"
+    except Exception as exc:  # noqa: BLE001  el mensaje concreto lo pone forge_errors
+        logger.warning("Fallo al consultar GitLab para %s: %s", owner_repo, exc)
+        info["error"] = forge_errors.describe(
+            exc, "GitLab", "GITLAB_TOKEN", bool(settings.gitlab_token)
+        )
     return info

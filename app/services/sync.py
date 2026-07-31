@@ -6,9 +6,11 @@
 Cada mitad gestiona su propio campo de error (`local_error` / `remote_error`) para que
 un ciclo no borre el error del otro. `sync_project` corre ambas (alta/edición/sync manual).
 """
+import json
 import logging
 import re
 from datetime import datetime
+from urllib.parse import urlparse
 
 from ..models import Project, utcnow
 from ..security import safe_external_url
@@ -21,6 +23,19 @@ REMOTE_CLIENTS = {
     "gitlab": gitlab_client,
     "bitbucket": bitbucket_client,
 }
+
+# Host del remoto -> proveedor soportado. Cubre los dominios públicos; una
+# instancia self-hosted (gitlab.miempresa.tld) no se adivina y se deja al usuario.
+PROVIDER_HOSTS = {
+    "github.com": "github",
+    "www.github.com": "github",
+    "gitlab.com": "gitlab",
+    "www.gitlab.com": "gitlab",
+    "bitbucket.org": "bitbucket",
+    "www.bitbucket.org": "bitbucket",
+}
+
+COMMIT_WEEKS = 12
 
 # 'owner/repo', admitiendo subgrupos anidados de GitLab ('grupo/sub/repo').
 # Cada segmento se limita a caracteres válidos en un nombre de repo, lo que de
@@ -55,6 +70,54 @@ def normalize_remote_repo(spec: str | None) -> str | None:
     return spec
 
 
+def provider_from_url(url: str | None) -> str | None:
+    """Proveedor deducido de la URL de un remoto git, o None si no se reconoce.
+
+    Acepta las dos formas en que git guarda un remoto: https://host/owner/repo y
+    git@host:owner/repo (esta última no es una URL válida para urlparse, así que
+    el host se extrae a mano).
+    """
+    if not url:
+        return None
+    url = url.strip()
+    if url.startswith("git@"):
+        host = url[4:].split(":", 1)[0].split("/", 1)[0]
+    else:
+        host = urlparse(url).hostname or ""
+    return PROVIDER_HOSTS.get(host.lower())
+
+
+def remote_from_url(url: str | None) -> tuple[str | None, str | None]:
+    """(proveedor, 'owner/repo') a partir de la URL de un remoto. (None, None) si no aplica."""
+    provider = provider_from_url(url)
+    if not provider:
+        return None, None
+    repo = normalize_remote_repo(url)
+    return (provider, repo) if repo else (None, None)
+
+
+def link_remote_from_git(project: Project) -> bool:
+    """Rellena proveedor y owner/repo leyendo el remoto `origin` del repo local.
+
+    Solo actúa si el proyecto aún no tiene remoto: si el usuario lo puso o lo
+    corrigió a mano, su valor manda sobre lo que diga `origin`. Devuelve True si
+    ha cambiado algo. Es lo que hace que un repo recién descubierto traiga sus
+    estrellas, PRs y CI sin que nadie teclee 'owner/repo'.
+    """
+    if project.remote_provider and project.remote_repo:
+        return False
+    if not project.local_path or project.local_path_missing:
+        return False
+
+    provider, repo = remote_from_url(local_scanner.get_remote_url(project.local_path))
+    if not (provider and repo):
+        return False
+
+    project.remote_provider = provider
+    project.remote_repo = repo
+    return True
+
+
 def _parse_remote_date(value: str | None):
     if not value:
         return None
@@ -85,6 +148,15 @@ def sync_local(project: Project) -> None:
     project.last_commit_message = local_info.get("last_commit_message")
     project.last_commit_date = local_info.get("last_commit_date")
     project.has_uncommitted_changes = local_info.get("has_uncommitted_changes", False)
+
+    # El remoto vive en el propio repo: leerlo aquí evita que el usuario tenga
+    # que teclear 'owner/repo' proyecto por proyecto para ver datos del forge.
+    link_remote_from_git(project)
+
+    # Actividad para el sparkline. Un solo `git log`, no toca el árbol de trabajo.
+    project.commit_weeks = json.dumps(
+        local_scanner.get_commit_weeks(project.local_path, COMMIT_WEEKS)
+    )
 
     # scan_todos recorre el árbol entero leyendo cada fichero línea a línea, y
     # este ciclo corre cada pocos minutos por proyecto. El conteo solo puede

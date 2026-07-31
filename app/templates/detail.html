@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_widgets.html" import sparkline %}
 {% block title %}{{ p.name }} · Proyectos{% endblock %}
 {% block content %}
 
@@ -56,6 +57,14 @@
         {% if p.todo_count is not none %}<span class="tag {{ 'warning' if p.todo_count else '' }}">{{ icon("list-todo", 12) }} {{ p.todo_count }} TODOs</span>{% endif %}
     </div>
 
+    {% if p.week_counts() %}
+    <div class="activity-block">
+        <span class="subtle">{{ icon("chart-column", 13) }} Actividad ({{ p.week_counts()|length }} semanas)</span>
+        {{ sparkline(p.week_counts(), 260, 34) }}
+        <span class="subtle">{{ p.week_counts()|sum }} commits</span>
+    </div>
+    {% endif %}
+
     <div class="toolbar" style="margin-top:.4rem">
         <span class="subtle">{{ icon("clock", 12) }} sync {{ p.last_synced_at|timeago }}</span>
         <span class="grow"></span>
@@ -73,9 +82,13 @@
 </section>
 
 {% if readme_html %}
+{# Plegado por defecto: un README largo enterraba commits, TODOs y tareas varias
+   pantallas más abajo, que es justo lo que se viene a mirar a esta página. #}
 <section class="card">
-    <h3>{{ icon("book-open") }} README</h3>
-    <div class="readme">{{ readme_html|safe }}</div>
+    <details class="readme-block">
+        <summary><h3>{{ icon("book-open") }} README</h3>{{ icon("chevron-down", 16) }}</summary>
+        <div class="readme">{{ readme_html|safe }}</div>
+    </details>
 </section>
 {% endif %}
 

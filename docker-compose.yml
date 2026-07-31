@@ -6,7 +6,7 @@ services:
     ports:
       # Solo loopback: para exponerlo, ponlo detrás de un proxy inverso con TLS
       # o accede por VPN. No lo publiques directamente en 0.0.0.0.
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${HOST_PORT:-8003}:8000"
     env_file:
       - .env
     volumes:

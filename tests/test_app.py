@@ -108,14 +108,16 @@ def test_is_stale():
 def test_summary_agrega():
     proyectos = [
         Project(name="a", open_prs=2, open_issues=1, has_uncommitted_changes=True),
-        Project(name="b", open_prs=3, local_error="roto"),
+        Project(name="b", open_prs=3, local_error="roto", ci_status="failure", oldest_open_pr_days=30),
     ]
-    resumen = _summary(proyectos, 30)
+    resumen = _summary(proyectos, 30, 7)
     assert resumen["total"] == 2
     assert resumen["prs"] == 5
     assert resumen["issues"] == 1
     assert resumen["cambios"] == 1
     assert resumen["errores"] == 1
+    assert resumen["ci_rojo"] == 1
+    assert resumen["prs_estancados"] == 1
 
 
 # --------------------------------------------------------------------------

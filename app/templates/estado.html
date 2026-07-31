@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Estado del sistema · Proyectos{% endblock %}
+{% block content %}
+
+<a href="/" class="back-link">{{ icon("chevron-left", 15) }} Volver al dashboard</a>
+
+<section class="card">
+    <h3>{{ icon("activity") }} Trabajos en segundo plano</h3>
+    <p class="hint">Todo el panel se alimenta de estos jobs. Si algo se queda viejo, aquí se ve por qué.</p>
+    <div class="table-wrap">
+        <table class="dense">
+            <thead><tr><th></th><th>Trabajo</th><th>Última ejecución</th><th>Resultado</th><th>Próxima</th></tr></thead>
+            <tbody>
+            {% for job in jobs %}
+                <tr>
+                    <td>
+                        {% if job.ok is none %}<span class="ci-dot" title="Todavía no ha corrido"></span>
+                        {% elif job.ok %}<span class="ci-dot ok" title="Correcto"></span>
+                        {% else %}<span class="ci-dot bad" title="Con error"></span>{% endif %}
+                    </td>
+                    <td>{{ job.label }}</td>
+                    <td class="subtle">{{ job.last_at|timeago if job.last_at else "nunca" }}</td>
+                    <td class="{{ 'negative' if job.ok is false else '' }}">{{ job.detail or "–" }}</td>
+                    <td class="subtle">{{ job.next_at.strftime("%d/%m %H:%M") if job.next_at else "–" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="grid-summary">
+    <div class="card stat {{ 'negative' if not github_token else '' }}">
+        <span class="stat-head">{{ icon("key-round", 16) }} GITHUB_TOKEN</span>
+        <p class="big-number {{ 'positive' if github_token else 'negative' }}">{{ "OK" if github_token else "falta" }}</p>
+        {% if not github_token %}
+        <span class="stat-foot warning">Sin token: 60 peticiones/hora y nada de repos privados</span>
+        {% endif %}
+    </div>
+    <div class="card stat">
+        <span class="stat-head">{{ icon("gauge", 16) }} Cuota de GitHub</span>
+        {% if rate_limit.remaining is not none %}
+        <p class="big-number {{ 'negative' if rate_limit.remaining < 100 else '' }}">{{ rate_limit.remaining }}{% if rate_limit.limit %}<span class="subtle" style="font-size:1rem"> / {{ rate_limit.limit }}</span>{% endif %}</p>
+        <span class="stat-foot subtle">
+            {% if rate_limit.reset %}se repone a las {{ rate_limit.reset.strftime("%H:%M") }} UTC{% endif %}
+        </span>
+        {% else %}
+        <p class="big-number subtle">–</p>
+        <span class="stat-foot subtle">Sin llamadas todavía</span>
+        {% endif %}
+    </div>
+    <div class="card stat">
+        <span class="stat-head">{{ icon("send", 16) }} Telegram</span>
+        <p class="big-number {{ 'positive' if telegram_ok else 'subtle' }}">{{ "activo" if telegram_ok else "off" }}</p>
+        {% if not telegram_ok %}
+        <span class="stat-foot subtle">Configura TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID</span>
+        {% endif %}
+    </div>
+    <div class="card stat {{ 'negative' if errores else '' }}">
+        <span class="stat-head">{{ icon("plug-zap", 16) }} Proyectos con error</span>
+        <p class="big-number {{ 'negative' if errores else 'positive' }}">{{ errores|length }}</p>
+    </div>
+</section>
+
+{% if errores %}
+<section class="card">
+    <h3>{{ icon("triangle-alert") }} Errores de sincronización</h3>
+    <ul class="error-list">
+        {% for p in errores %}
+        <li><a href="/proyecto/{{ p.id }}">{{ p.name }}</a> <span class="negative">{{ p.sync_error }}</span></li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="card">
+    <h3>{{ icon("settings") }} Configuración activa</h3>
+    <div class="table-wrap">
+        <table class="dense">
+            <tbody>
+                <tr><td>Carpeta escaneada</td><td><code>{{ scan_path }}</code></td></tr>
+                <tr><td>Profundidad de escaneo</td><td>{{ scan_depth }}
+                    {% if scan_depth < 2 %}<span class="tag warning">{{ icon("triangle-alert", 11) }} con 1 solo se ven los repos del primer nivel</span>{% endif %}
+                </td></tr>
+                <tr><td>Descubrimiento</td><td>cada {{ discovery_minutes }} min</td></tr>
+                <tr><td>Sync local (git)</td><td>cada {{ local_sync_minutes }} min</td></tr>
+                <tr><td>Sync remoto (API)</td><td>cada {{ remote_sync_minutes }} min</td></tr>
+                <tr><td>Alta automática desde GitHub</td><td>{{ "sí" if auto_import else "no" }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% endblock %}

@@ -70,4 +70,6 @@ def init_db():
         "remote_error": "VARCHAR(500)",
         # v4: cachea el SHA del último conteo de TODOs
         "todo_scanned_sha": "VARCHAR(64)",
+        # v4: commits por semana (JSON) para el sparkline de actividad
+        "commit_weeks": "VARCHAR(255)",
     })

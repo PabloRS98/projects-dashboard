@@ -70,6 +70,64 @@ def test_readme_conserva_el_formato_legitimo():
 
 
 # --------------------------------------------------------------------------
+# Reescritura de imágenes relativas del README
+# --------------------------------------------------------------------------
+
+GITHUB_REPO = "https://github.com/pablo/repo"
+
+
+def test_las_imagenes_relativas_apuntan_al_contenido_crudo():
+    """Sin esto, un README que enseña capturas las mostraba todas rotas."""
+    html = render("![captura](docs/captura.png)", GITHUB_REPO, "main")
+    assert "https://raw.githubusercontent.com/pablo/repo/main/docs/captura.png" in html
+
+
+def test_las_rutas_con_prefijo_relativo_se_normalizan():
+    html = render("![x](./assets/x.gif)", GITHUB_REPO, "main")
+    assert "raw.githubusercontent.com/pablo/repo/main/assets/x.gif" in html
+
+
+def test_sin_rama_conocida_se_usa_HEAD():
+    html = render("![x](a.png)", GITHUB_REPO, None)
+    assert "/pablo/repo/HEAD/a.png" in html
+
+
+def test_las_absolutas_no_se_tocan():
+    html = render("![badge](https://img.shields.io/b.svg)", GITHUB_REPO, "main")
+    assert 'src="https://img.shields.io/b.svg"' in html
+    assert "raw.githubusercontent.com" not in html
+
+
+def test_sin_repo_remoto_el_readme_se_deja_igual():
+    html = render("![x](docs/x.png)", None, None)
+    assert 'src="docs/x.png"' in html
+
+
+@pytest.mark.parametrize("forge,esperado", [
+    ("https://gitlab.com/grupo/repo", "gitlab.com/grupo/repo/-/raw/main/x.png"),
+    ("https://bitbucket.org/pablo/repo", "bitbucket.org/pablo/repo/raw/main/x.png"),
+])
+def test_cada_forge_usa_su_ruta_de_contenido_crudo(forge, esperado):
+    assert esperado in render("![x](x.png)", forge, "main")
+
+
+@pytest.mark.parametrize("vector", [
+    "![x](javascript:alert(1))",
+    "![x](data:text/html;base64,PHNjcmlwdD4=)",
+    '<img src="x.png" onerror="alert(1)">',
+])
+def test_la_reescritura_no_abre_un_hueco_de_xss(vector):
+    """La reescritura ocurre ANTES del saneado, así que lo inyectado pasa por nh3."""
+    assert _ejecutable_con_repo(vector) == []
+
+
+def _ejecutable_con_repo(markdown_source: str) -> list[str]:
+    auditor = _Audit()
+    auditor.feed(render(markdown_source, GITHUB_REPO, "main"))
+    return auditor.hallazgos
+
+
+# --------------------------------------------------------------------------
 # Open redirect
 # --------------------------------------------------------------------------
 

@@ -21,8 +21,9 @@ venv/
 .pytest_cache/
 .ruff_cache/
 
-# Datos locales (volumen de docker-compose)
+# Datos locales (volumen de docker-compose y base de datos de desarrollo)
 /data/
+/data-dev/
 
 # IDE
 .vscode/

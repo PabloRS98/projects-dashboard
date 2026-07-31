@@ -1,0 +1,74 @@
+{# Tarjeta de proyecto estilo panel homelab: cabecera, señales, métricas fijas y acciones. #}
+{% from "_icons.html" import icon %}
+{% from "_widgets.html" import ci_dot, sparkline, estado_badges, metrics %}
+
+<article class="card project-card {{ 'archived' if p.is_archived else '' }}">
+    <header class="project-header">
+        <form method="post" action="/{{ p.id }}/favorito">
+            <button type="submit" class="ghost small icon-btn star-btn {{ 'on' if p.is_favorite else '' }}"
+                    title="{{ 'Quitar de favoritos' if p.is_favorite else 'Marcar favorito' }}">{{ icon("star", 14) }}</button>
+        </form>
+        {{ ci_dot(p.ci_status) }}
+        <a class="project-name" href="/proyecto/{{ p.id }}">{{ p.name }}</a>
+        <span class="grow"></span>
+        {{ sparkline(p.week_counts()) }}
+    </header>
+
+    <p class="project-desc">{{ p.description or "Sin descripción" }}</p>
+
+    <div class="badges">{{ estado_badges(p, stale_days, stale_pr_days) }}</div>
+
+    {{ metrics(p) }}
+
+    <p class="hint commit-line">
+        {% if p.last_commit_message %}
+        «{{ p.last_commit_message|truncate(60) }}»
+        <span class="subtle">· {{ p.last_commit_date|timeago if p.last_commit_date else "?" }}</span>
+        {% else %}
+        <span class="subtle">Sin datos de commits todavía</span>
+        {% endif %}
+    </p>
+
+    {% if p.sync_error and not p.local_path_missing %}
+    <p class="hint negative">{{ icon("triangle-alert", 13) }} {{ p.sync_error }}</p>
+    {% elif p.local_path_missing %}
+    <p class="hint negative">{{ icon("folder-x", 13) }} <code>{{ p.local_path }}</code> ya no existe</p>
+    {% endif %}
+
+    <div class="card-links">
+        {% if p.homepage_url %}<a class="tag accent" href="{{ p.homepage_url }}" target="_blank" rel="noopener">{{ icon("external-link", 12) }} web</a>{% endif %}
+        {% if p.repo_url %}<a class="tag" href="{{ p.repo_url }}" target="_blank" rel="noopener">{{ icon("git-branch", 12) }} {{ p.remote_repo }}</a>{% endif %}
+        {% if p.branch %}<span class="tag subtle-tag">{{ icon("git-branch", 11) }} {{ p.branch }}</span>{% endif %}
+        {% for t in p.tag_list() %}<a class="tag" href="/?tag={{ t|urlencode }}">{{ icon("tag", 11) }} {{ t }}</a>{% endfor %}
+    </div>
+
+    <details>
+        <summary>{{ icon("list-todo", 14) }} Notas y tareas
+            {%- set pending_tasks = p.tasks|rejectattr("done")|list|length %}
+            {%- if pending_tasks %} <span class="tag accent">{{ pending_tasks }}</span>{% endif %}
+        </summary>
+        <form method="post" action="/{{ p.id }}/notas">
+            <textarea name="notes" placeholder="Notas (markdown libre)">{{ p.notes }}</textarea>
+            <button type="submit" class="ghost small" style="margin-top:.4rem">{{ icon("check", 13) }} Guardar notas</button>
+        </form>
+        <div id="tasks-{{ p.id }}" style="margin-top:.6rem">
+            {% include "_tasks.html" %}
+        </div>
+    </details>
+
+    <footer class="toolbar card-footer">
+        <a class="subtle" href="/proyecto/{{ p.id }}">{{ icon("book-open", 12) }} ficha</a>
+        <span class="subtle">· {{ icon("clock", 12) }} {{ p.last_synced_at|timeago }}</span>
+        <span class="grow"></span>
+        <form method="post" action="/{{ p.id }}/sincronizar">
+            <button type="submit" class="ghost small icon-btn" title="Sincronizar ahora">{{ icon("refresh-cw", 13) }}</button>
+        </form>
+        <form method="post" action="/{{ p.id }}/archivar">
+            <button type="submit" class="ghost small icon-btn" title="{{ 'Desarchivar' if p.is_archived else 'Archivar' }}">{{ icon("archive", 13) }}</button>
+        </form>
+        <button type="button" class="ghost small icon-btn" title="Editar" data-open-dialog="#dlg-project-{{ p.id }}">{{ icon("pencil", 13) }}</button>
+        <form method="post" action="/{{ p.id }}/eliminar" data-confirm="¿Eliminar el proyecto &quot;{{ p.name }}&quot; del dashboard? (no toca el repo)">
+            <button type="submit" class="danger small icon-btn" title="Eliminar">{{ icon("trash-2", 13) }}</button>
+        </form>
+    </footer>
+</article>
