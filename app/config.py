@@ -1,13 +1,20 @@
 """Configuración centralizada vía variables de entorno (.env)."""
+from pathlib import Path
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_PASSWORD = "changeme"
 MIN_PASSWORD_LENGTH = 8
 
+# Absoluta, por el mismo motivo que las plantillas y los estáticos: con una ruta
+# relativa el .env solo se lee si el proceso arranca desde la raíz del repo, y si
+# no, la app se levanta en silencio con toda la configuración por defecto.
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     app_name: str = "Dashboard de Proyectos"
 
@@ -38,6 +45,14 @@ class Settings(BaseSettings):
     # chocar con los límites de GitHub).
     local_sync_minutes: int = 15
     remote_sync_minutes: int = 60
+    # Cada cuánto se buscan proyectos nuevos (en disco y en la cuenta de GitHub).
+    # Espaciado: los repos no aparecen cada minuto y el escaneo recorre el disco.
+    discovery_minutes: int = 360
+
+    # Alta automática de los repos de la cuenta de GitHub que no estén clonados
+    # aquí. Requiere GITHUB_TOKEN. Desactívalo si solo quieres ver lo que tienes
+    # en local.
+    auto_import_github: bool = True
 
     # Umbrales del rediseno v3
     stale_project_days: int = 30  # sin commits => "parado"

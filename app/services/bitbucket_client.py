@@ -6,6 +6,7 @@ import logging
 import httpx
 
 from ..config import settings
+from . import forge_errors
 
 logger = logging.getLogger(__name__)
 BASE_URL = "https://api.bitbucket.org/2.0"
@@ -49,7 +50,9 @@ def get_repo_info(owner_repo: str) -> dict:
             )
             if issues.status_code == 200:
                 info["open_issues"] = issues.json().get("size")
-    except Exception:
-        logger.exception("Fallo al consultar Bitbucket para %s", owner_repo)
-        info["error"] = "No se pudo conectar con Bitbucket (revisa el nombre owner/repo o el token)"
+    except Exception as exc:  # noqa: BLE001  el mensaje concreto lo pone forge_errors
+        logger.warning("Fallo al consultar Bitbucket para %s: %s", owner_repo, exc)
+        info["error"] = forge_errors.describe(
+            exc, "Bitbucket", "BITBUCKET_TOKEN", bool(settings.bitbucket_token)
+        )
     return info

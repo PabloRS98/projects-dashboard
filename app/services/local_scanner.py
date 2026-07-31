@@ -3,7 +3,7 @@ cambios sin commitear, TODOs/FIXMEs en el codigo)."""
 import logging
 import os
 import subprocess
-from datetime import datetime
+from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,11 @@ def discover_repos(root_path: str) -> list[dict]:
                 if os.path.isdir(full_path):
                     if os.path.isdir(os.path.join(full_path, ".git")):
                         rel_name = os.path.relpath(full_path, root_path).replace("\\", "/")
-                        results.append({"name": rel_name, "local_path": full_path})
+                        results.append({
+                            "name": rel_name,
+                            "local_path": full_path,
+                            "remote_url": get_remote_url(full_path),
+                        })
                     else:
                         _scan(full_path, current_depth + 1)
         except Exception:
@@ -49,7 +53,12 @@ def _run_git(path: str, args: list[str]) -> str | None:
     try:
         result = subprocess.run(
             ["git", "-C", path] + args,
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, timeout=10,
+            # git escribe los mensajes de commit en UTF-8. Con `text=True` a
+            # secas, Python los decodifica con la codificación del sistema, que
+            # en Windows es cp1252: un "—" salía como "â€”". `replace` evita
+            # además que un byte suelto raro tumbe la sincronización entera.
+            text=True, encoding="utf-8", errors="replace",
         )
         if result.returncode != 0:
             return None
@@ -89,6 +98,46 @@ def get_git_status(path: str) -> dict:
         "last_commit_date": commit_date,
         "has_uncommitted_changes": bool(status_output),
     }
+
+
+def get_remote_url(path: str) -> str | None:
+    """URL del remoto 'origin' del repo, o None si no lo tiene.
+
+    Es lo que permite que un repo descubierto en disco quede enlazado con su
+    forge sin que el usuario teclee 'owner/repo': el dato ya está en el propio
+    repositorio, solo había que leerlo.
+    """
+    if not path or not os.path.isdir(os.path.join(path, ".git")):
+        return None
+    return _run_git(path, ["remote", "get-url", "origin"]) or None
+
+
+def get_commit_weeks(path: str, weeks: int = 12) -> list[int]:
+    """Commits por semana en las últimas `weeks` semanas, del más antiguo al más
+    reciente. Alimenta el sparkline de actividad de la tarjeta.
+
+    Un único `git log` con las fechas en formato corto: barato incluso en repos
+    grandes, porque no toca el árbol de trabajo.
+    """
+    empty = [0] * weeks
+    if not path or not os.path.isdir(os.path.join(path, ".git")):
+        return empty
+    out = _run_git(path, ["log", "--since=%d.weeks" % weeks, "--format=%cs"])
+    if not out:
+        return empty
+
+    today = date.today()
+    counts = empty[:]
+    for line in out.splitlines():
+        try:
+            commit_day = date.fromisoformat(line.strip())
+        except ValueError:
+            continue
+        # 0 = semana en curso; weeks-1 = la más antigua dentro de la ventana.
+        index = (today - commit_day).days // 7
+        if 0 <= index < weeks:
+            counts[weeks - 1 - index] += 1
+    return counts
 
 
 def get_recent_commits(path: str, limit: int = 15) -> list[dict]:

@@ -1,0 +1,61 @@
+{# Piezas visuales compartidas por dashboard, ficha y modo TV. #}
+{% from "_icons.html" import icon %}
+
+{% macro ci_dot(status) %}
+{%- if status -%}
+<span class="ci-dot {{ 'ok' if status in ('success', 'passed', 'completed') else ('bad' if status in ('failure', 'failed', 'error', 'cancelled', 'timed_out') else 'run') }}"
+      title="CI: {{ status }}"></span>
+{%- endif -%}
+{% endmacro %}
+
+{% macro sparkline(weeks, width=104, height=22) %}
+{#- Actividad de commits por semana. SVG a mano: son 12 barras, no compensa
+    cargar una librería de gráficos para esto. -#}
+{%- if weeks -%}
+{%- set top = weeks|max -%}
+{%- set slot = width / weeks|length -%}
+<svg class="spark" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}"
+     role="img" aria-label="Commits por semana en las últimas {{ weeks|length }} semanas">
+    {%- for n in weeks -%}
+    {%- set h = 1 if top == 0 else (1 + (n / top) * (height - 2)) -%}
+    <rect x="{{ (loop.index0 * slot)|round(2) }}" y="{{ (height - h)|round(2) }}"
+          width="{{ (slot * 0.68)|round(2) }}" height="{{ h|round(2) }}"
+          class="{{ 'spark-bar' if n else 'spark-bar empty' }}"><title>{{ n }} commits</title></rect>
+    {%- endfor -%}
+</svg>
+{%- endif -%}
+{% endmacro %}
+
+{% macro estado_badges(p, stale_days, stale_pr_days) %}
+{#- Señales de alerta del proyecto, en el mismo orden siempre para que la vista
+    sea escaneable de un vistazo. -#}
+{%- set dias = p.days_since_commit() -%}
+{%- if p.local_path_missing %}<span class="tag negative">{{ icon("folder-x", 11) }} ruta perdida</span>
+{%- elif p.sync_error %}<span class="tag negative">{{ icon("plug-zap", 11) }} error de sync</span>{% endif %}
+{%- if p.ci_status in ("failure", "failed", "error", "cancelled", "timed_out") %}
+<span class="tag negative">{{ icon("triangle-alert", 11) }} CI</span>{% endif %}
+{%- if dias is not none and dias > stale_days and not p.is_archived %}
+<span class="tag warning">{{ icon("moon", 11) }} parado {{ dias }}d</span>{% endif %}
+{%- if p.oldest_open_pr_days is not none and p.oldest_open_pr_days > stale_pr_days %}
+<span class="tag warning">{{ icon("hourglass", 11) }} PR {{ p.oldest_open_pr_days }}d</span>{% endif %}
+{%- if p.has_uncommitted_changes %}<span class="tag">{{ icon("pencil", 11) }} sin commitear</span>{% endif %}
+{% endmacro %}
+
+{% macro metrics(p) %}
+{#- Fila de métricas de altura fija: los huecos se rellenan con "–" para que
+    todas las tarjetas midan lo mismo y la rejilla quede alineada. -#}
+<div class="metrics">
+    <div class="metric" title="PRs abiertos">
+        {{ icon("git-pull-request", 13) }}<span>{{ p.open_prs if p.open_prs is not none else "–" }}</span>
+    </div>
+    <div class="metric" title="Issues abiertas">
+        {{ icon("circle-dot", 13) }}<span>{{ p.open_issues if p.open_issues is not none else "–" }}</span>
+    </div>
+    <div class="metric" title="Estrellas">
+        {{ icon("star", 13) }}<span>{{ p.stars if p.stars is not none else "–" }}</span>
+    </div>
+    <div class="metric {{ 'warn' if p.todo_count else '' }}" title="TODOs / FIXMEs en el código">
+        {{ icon("list-todo", 13) }}<span>{{ p.todo_count if p.todo_count is not none else "–" }}</span>
+    </div>
+</div>
+{% endmacro %}

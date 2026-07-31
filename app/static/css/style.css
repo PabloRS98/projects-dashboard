@@ -139,8 +139,11 @@ code { background: var(--bg-soft); border: 1px solid var(--border); border-radiu
 }
 .card > h3 .icon, .card-title .icon { color: var(--accent); }
 
-.grid-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 1rem; }
-.grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 1.25rem; }
+.grid-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 1rem; }
+a.card.stat { text-decoration: none; color: inherit; transition: border-color .15s, transform .08s; }
+a.card.stat:hover { border-color: var(--border-2); text-decoration: none; transform: translateY(-1px); }
+.stat-foot { font-size: .74rem; color: var(--text-3); }
+.stat-foot.warning { color: var(--warning); }
 
 /* Tarjeta de estadística */
 .stat { display: flex; flex-direction: column; gap: .35rem; }
@@ -358,35 +361,6 @@ dialog .dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; m
 .pagination { display: flex; align-items: center; justify-content: center; gap: .8rem; margin-top: .9rem; }
 .pagination .subtle { min-width: 0; text-align: center; }
 
-/* ---------- Barras de presupuesto / progreso ---------- */
-.budget-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr minmax(130px, auto); gap: .8rem; align-items: center; padding: .45rem 0; font-size: .87rem; }
-.budget-row .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
-.progress { background: var(--bg-soft); border-radius: 999px; overflow: hidden; height: 8px; border: 1px solid var(--border); }
-.progress > div { background: var(--accent); height: 100%; border-radius: 999px; transition: width .4s ease; }
-.progress.warning > div { background: var(--warning); }
-.progress.over > div { background: var(--negative); }
-
-/* ---------- Pendientes de aprobar (voz) ---------- */
-.pending-row {
-    display: grid;
-    grid-template-columns: 92px 105px 115px 150px 1fr auto;
-    gap: .5rem;
-    align-items: center;
-    padding: .55rem 0;
-    border-bottom: 1px solid var(--border);
-    font-size: .88rem;
-}
-.pending-row:last-child { border-bottom: none; }
-.pending-row .row-actions { display: flex; gap: .35rem; }
-
-/* Botón de voz */
-.voice-box { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
-#btn-voice.listening { animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
-    50% { box-shadow: 0 0 0 10px transparent; }
-}
-
 /* ---------- Detalles / secciones plegables ---------- */
 details summary {
     cursor: pointer; color: var(--text-2); font-size: .86rem; font-weight: 550;
@@ -403,34 +377,6 @@ details[open] summary { margin-bottom: .7rem; }
     color: var(--text-3); padding: 1.8rem 1rem; text-align: center; font-size: .88rem;
 }
 .empty .icon { color: var(--text-3); opacity: .7; }
-
-/* ---------- Gráficas ---------- */
-.chart-box { position: relative; height: 250px; }
-canvas { max-width: 100%; }
-
-/* ---------- Catálogo de medios (media-catalog) ---------- */
-.grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-top: .9rem; }
-
-.media-card { display: flex; flex-direction: column; gap: .45rem; padding: .8rem; }
-.media-card .cover { position: relative; border-radius: var(--r-sm); overflow: hidden; aspect-ratio: 2/3; background: var(--bg-soft); border: 1px solid var(--border); }
-.media-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.media-card .cover .no-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
-.media-card .cover .status-badge { position: absolute; top: .45rem; left: .45rem; }
-.media-card .title { font-weight: 600; font-size: .9rem; line-height: 1.3; }
-.media-card .meta { color: var(--text-3); font-size: .77rem; }
-
-.status-badge {
-    display: inline-flex; align-items: center; gap: .25rem;
-    padding: .14rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 620;
-    text-transform: uppercase; letter-spacing: .04em;
-    background: var(--card-2); color: var(--text-2); border: 1px solid var(--border-2);
-}
-.status-badge.pendiente { background: rgba(120, 130, 150, .18); color: #b6bfd0; }
-.status-badge.en_progreso { background: color-mix(in srgb, var(--accent) 20%, rgba(10,12,18,.75)); color: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-.status-badge.completado { background: color-mix(in srgb, var(--positive) 18%, rgba(10,12,18,.75)); color: var(--positive); border-color: color-mix(in srgb, var(--positive) 40%, transparent); }
-.status-badge.abandonado { background: color-mix(in srgb, var(--negative) 16%, rgba(10,12,18,.75)); color: var(--negative); border-color: color-mix(in srgb, var(--negative) 35%, transparent); }
-
-.rating-chip { display: inline-flex; align-items: center; gap: .25rem; color: var(--warning); font-size: .8rem; font-weight: 600; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 .toolbar .grow { flex: 1; }
@@ -481,21 +427,12 @@ canvas { max-width: 100%; }
     .toasts { bottom: calc(4.6rem + env(safe-area-inset-bottom)); }
 
     .grid-summary { grid-template-columns: repeat(2, 1fr); gap: .7rem; }
-    .grid-charts { grid-template-columns: 1fr; }
     .big-number { font-size: 1.35rem; }
-    .chart-box { height: 215px; }
 
     .form-grid { grid-template-columns: 1fr 1fr; }
     .form-grid .full, .form-grid textarea, .form-grid button { grid-column: 1 / -1; }
 
-    .pending-row { grid-template-columns: 1fr 1fr; }
-    .pending-row .row-actions { grid-column: 1 / -1; justify-content: flex-end; }
-
-    .budget-row { grid-template-columns: 1fr; gap: .25rem; }
-    .budget-row .num { text-align: left; }
-
     th, td { padding: .5rem .45rem; font-size: .83rem; }
-    .grid-cards { grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: .7rem; }
     dialog { padding: 1.05rem; }
 }
 
@@ -504,12 +441,14 @@ canvas { max-width: 100%; }
 }
 
 /* --- v3: agrupación por estado, favoritos y escaparate --- */
+.list-count { margin: 0 0 -.4rem; }
 .group-head { display: flex; align-items: center; gap: .5rem; margin: 1.5rem 0 .1rem; color: var(--text-2); font-size: .92rem; font-weight: 600; }
 .group-head .icon { color: var(--text-3); }
 .group-head .count { color: var(--text-3); font-weight: 500; font-variant-numeric: tabular-nums; }
 .group-head.parados, .group-head.parados .icon { color: var(--warning); }
 .group-head.favoritos, .group-head.favoritos .icon { color: var(--accent-soft); }
 .group-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-top: .5rem; }
+.group-cards > * { min-width: 0; }
 
 .star-btn svg { fill: none; }
 .star-btn.on { color: var(--warning); }
@@ -553,3 +492,159 @@ canvas { max-width: 100%; }
 .readme table { border-collapse: collapse; }
 .readme th, .readme td { border: 1px solid var(--border); padding: .35rem .6rem; }
 .readme blockquote { border-left: 3px solid var(--border); padding-left: .8rem; color: var(--text-2); }
+
+/* El README va plegado: el resumen se ve como un encabezado normal. */
+.readme-block > summary { align-items: center; justify-content: space-between; }
+.readme-block > summary h3 { display: flex; align-items: center; gap: .5rem; font-size: .95rem; font-weight: 600; margin: 0; }
+.readme-block > summary h3 .icon { color: var(--accent); }
+.readme-block[open] > summary .icon:last-child { transform: rotate(180deg); }
+
+/* ============================================================
+   v4 — barra de control, tarjeta homelab, sparkline, tabla y modo TV
+   ============================================================ */
+
+/* ---------- Barra de control (buscador + orden + filtros) ---------- */
+.controls { display: flex; flex-direction: column; gap: .6rem; }
+.control-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+
+.controls .search {
+    display: flex; align-items: center; gap: .5rem; flex: 1 1 260px;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 0 .65rem; transition: border-color .15s, box-shadow .15s;
+}
+.controls .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.controls .search .icon { color: var(--text-3); }
+.controls .search input { background: none; border: none; padding: .5rem 0; }
+.controls .search input:focus { outline: none; box-shadow: none; }
+
+.controls .select {
+    display: flex; align-items: center; gap: .4rem;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 .55rem;
+}
+.controls .select .icon { color: var(--text-3); }
+.controls .select select { background: none; border: none; padding: .5rem .2rem; width: auto; }
+.controls .select select:focus { outline: none; box-shadow: none; }
+
+/* Alternador de vista: radios reales, estilados como botones segmentados. */
+.view-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.view-toggle label {
+    display: inline-flex; align-items: center; padding: .5rem .7rem; cursor: pointer;
+    color: var(--text-3); background: var(--bg-soft);
+}
+.view-toggle label:hover { color: var(--text-2); }
+.view-toggle label.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-soft); }
+.view-toggle label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Chips de filtro y de tag: checkbox/radio ocultos, la etiqueta es el control. */
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.chip {
+    display: inline-flex; align-items: center; gap: .3rem; cursor: pointer; user-select: none;
+    padding: .28rem .65rem; border-radius: 999px; font-size: .78rem; font-weight: 550;
+    background: var(--card-2); border: 1px solid var(--border); color: var(--text-2);
+    transition: border-color .15s, color .15s, background .15s;
+}
+.chip:hover { color: var(--text); border-color: var(--border-2); }
+.chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Los controles de chips y vista se ocultan a la vista, no al teclado ni al
+   lector de pantalla: con width/height 0 y opacity 0 dejaban de ser enfocables
+   y los filtros solo se podían usar con ratón. */
+.chip input, .view-toggle input {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    clip-path: inset(50%);
+    overflow: hidden; white-space: nowrap;
+}
+.chip.active {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    color: var(--accent-soft);
+}
+
+/* Indicador de carga de HTMX: solo visible mientras hay petición en vuelo. */
+.htmx-indicator { opacity: 0; color: var(--text-3); transition: opacity .2s; }
+.htmx-request .htmx-indicator, .htmx-indicator.htmx-request { opacity: 1; }
+.htmx-indicator .icon { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Tarjeta de proyecto ---------- */
+/* Filas fijas: cabecera, descripción, señales, métricas, commit, enlaces, notas,
+   pie. Con alturas propias las tarjetas quedaban desalineadas según qué campos
+   tuviera cada proyecto, y la rejilla parecía rota. */
+.project-card {
+    display: grid;
+    grid-template-rows: auto auto auto auto auto auto 1fr auto;
+    gap: .45rem;
+    /* Un elemento de rejilla no baja de su contenido salvo que se le diga: sin
+       esto, un nombre de proyecto largo ensancha la tarjeta y saca scroll
+       horizontal a la página entera. */
+    min-width: 0;
+}
+.project-card > * { min-width: 0; }
+.project-header { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.project-name {
+    flex: 1 1 auto; min-width: 0;
+    font-size: .98rem; font-weight: 620; color: var(--text); text-decoration: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.project-name:hover { color: var(--accent-soft); text-decoration: none; }
+.project-desc {
+    color: var(--text-2); font-size: .85rem; margin: 0; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    min-height: 2.3em;
+}
+.badges { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; min-height: 1.5rem; }
+.commit-line { margin: 0; min-height: 1.2rem; }
+.card-footer { border-top: 1px solid var(--border); padding-top: .5rem; margin-top: .2rem; }
+.subtle-tag { color: var(--text-3); }
+
+/* Métricas: cuatro columnas iguales, siempre presentes aunque no haya dato. */
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .3rem; }
+.metric {
+    display: flex; align-items: center; justify-content: center; gap: .3rem;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: .3rem .2rem; font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--text-2);
+}
+.metric .icon { color: var(--text-3); }
+.metric.warn { color: var(--warning); }
+.metric.warn .icon { color: var(--warning); }
+
+/* ---------- Sparkline de actividad ---------- */
+.spark { display: block; flex-shrink: 0; }
+.spark-bar { fill: var(--accent); }
+.spark-bar.empty { fill: var(--border-2); }
+
+/* ---------- Vista de tabla densa ---------- */
+table.dense td { vertical-align: top; }
+table.dense tr.archived { opacity: .6; }
+table.dense .badges { min-height: 0; }
+table.dense a { color: var(--text); font-weight: 550; }
+table.dense a:hover { color: var(--accent-soft); }
+
+.error-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .4rem; font-size: .87rem; }
+.error-list li { display: flex; gap: .6rem; flex-wrap: wrap; }
+
+/* ---------- Actividad en la ficha ---------- */
+.activity-block { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+
+/* ---------- Modo TV / pantalla ---------- */
+.tv { display: flex; flex-direction: column; gap: 1.1rem; }
+.tv-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.tv-head h2 { display: flex; align-items: center; gap: .55rem; margin: 0; font-size: 1.3rem; }
+.tv-kpis .big-number { font-size: 2.3rem; }
+.tv-list { display: flex; flex-direction: column; gap: .5rem; }
+.tv-row { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; padding: .7rem .95rem; }
+.tv-row strong { font-size: 1rem; }
+.empty.positive, .empty.positive .icon { color: var(--positive); opacity: 1; }
+
+@media (min-width: 1100px) {
+    .tv-kpis .big-number { font-size: 2.8rem; }
+    .tv-row strong { font-size: 1.1rem; }
+}
+
+@media (max-width: 720px) {
+    .controls .search { flex: 1 1 100%; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .project-card { grid-template-rows: none; }
+}

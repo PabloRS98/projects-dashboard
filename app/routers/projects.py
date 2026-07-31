@@ -1,30 +1,59 @@
-"""Dashboard de proyectos: alta/edición, auto-escaneo (con detección de rutas
-desaparecidas), filtros, resumen agregado, sincronización y checklist de tareas."""
-import os
-
-from fastapi import APIRouter, Depends, Form, Request, Response
+"""Dashboard de proyectos: alta/edición, descubrimiento automático, búsqueda,
+filtros combinables, orden, resumen agregado, panel de estado, sincronización y
+checklist de tareas."""
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query, Request, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import verify_auth
 from ..config import settings
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..flash import redirect_flash
 from ..models import Project, TaskItem
 from ..security import safe_external_url
-from ..services import local_scanner, readme
+from ..services import discovery, github_client, local_scanner, readme, scheduler, telegram
 from ..services.sync import normalize_remote_repo, sync_project
 from ..templating import templates
 
 router = APIRouter(tags=["proyectos"], dependencies=[Depends(verify_auth)])
 
+CI_BAD = {"failure", "failed", "error", "cancelled", "timed_out"}
+
+# Filtros combinables: se aplican en AND. Cada uno es (etiqueta, icono, predicado).
 FILTERS = {
-    "todos": ("Todos", lambda p: True),
-    "cambios": ("Con cambios sin commitear", lambda p: p.has_uncommitted_changes),
-    "prs": ("Con PRs abiertos", lambda p: (p.open_prs or 0) > 0),
-    "errores": ("Con error de sync", lambda p: bool(p.sync_error)),
-    "ruta-perdida": ("Ruta local perdida", lambda p: p.local_path_missing),
+    "cambios": ("Sin commitear", "git-branch", lambda p, s: p.has_uncommitted_changes),
+    "prs": ("Con PRs abiertos", "git-pull-request", lambda p, s: (p.open_prs or 0) > 0),
+    "pr-estancado": (
+        "PR estancado", "hourglass",
+        lambda p, s: (p.oldest_open_pr_days or 0) > s.stale_pr_days,
+    ),
+    "ci-rojo": ("CI en rojo", "triangle-alert", lambda p, s: p.ci_status in CI_BAD),
+    "errores": ("Con error de sync", "plug-zap", lambda p, s: bool(p.sync_error)),
+    "ruta-perdida": ("Ruta local perdida", "folder-x", lambda p, s: p.local_path_missing),
+    "parados": ("Parados", "moon", lambda p, s: _is_stale(p, s.stale_project_days)),
+    "favoritos": ("Favoritos", "star", lambda p, s: p.is_favorite),
 }
+
+def _staleness(p: Project) -> int:
+    """Días desde el último commit; los proyectos sin fecha van al final.
+
+    Sin el valor centinela, `None` no es comparable con `int` y ordenar reventaba
+    en cuanto había un proyecto recién dado de alta.
+    """
+    dias = p.days_since_commit()
+    return dias if dias is not None else 10**6
+
+
+# Orden: (etiqueta, clave). El sentido lo fija cada criterio, no un parámetro
+# aparte, porque para cada uno solo hay uno que el usuario quiera ver primero.
+SORTS = {
+    "commit": ("Actividad reciente", _staleness),
+    "nombre": ("Nombre", lambda p: p.name.lower()),
+    "estrellas": ("Estrellas", lambda p: -(p.stars or 0)),
+    "todos": ("TODOs", lambda p: -(p.todo_count or 0)),
+    "prs": ("PRs abiertos", lambda p: -(p.open_prs or 0)),
+}
+DEFAULT_SORT = "commit"
 
 
 def _is_stale(p: Project, stale_days: int) -> bool:
@@ -43,7 +72,7 @@ def _clean_tags(raw: str) -> str:
     return ", ".join(seen)
 
 
-def _summary(projects: list[Project], stale_days: int) -> dict:
+def _summary(projects: list[Project], stale_days: int, stale_pr_days: int) -> dict:
     return {
         "total": len(projects),
         "prs": sum(p.open_prs or 0 for p in projects),
@@ -53,26 +82,46 @@ def _summary(projects: list[Project], stale_days: int) -> dict:
         "errores": sum(1 for p in projects if p.sync_error),
         "rutas_perdidas": sum(1 for p in projects if p.local_path_missing),
         "parados": sum(1 for p in projects if _is_stale(p, stale_days)),
+        "ci_rojo": sum(1 for p in projects if p.ci_status in CI_BAD),
+        "prs_estancados": sum(1 for p in projects if (p.oldest_open_pr_days or 0) > stale_pr_days),
+        "estrellas": sum(p.stars or 0 for p in projects),
     }
 
 
-@router.get("/")
-def list_projects(request: Request, filtro: str = "todos", tag: str | None = None,
-                  db: Session = Depends(get_db)):
-    all_projects = db.query(Project).order_by(Project.name).all()
-    filtro = filtro if filtro in FILTERS else "todos"
-    stale_days = settings.stale_project_days
+def _matches_search(p: Project, needle: str) -> bool:
+    """Busca en lo que el usuario recuerda de un proyecto: nombre, descripción,
+    tags y el 'owner/repo' del remoto."""
+    if not needle:
+        return True
+    haystack = " ".join(
+        filter(None, [p.name, p.description, p.tags, p.remote_repo, p.local_path])
+    ).lower()
+    return all(word in haystack for word in needle.lower().split())
 
-    projects = [p for p in all_projects if FILTERS[filtro][1](p)]
+
+def _select(db: Session, q: str, filtros: list[str], tag: str | None, orden: str):
+    """Aplica búsqueda, filtros combinables, tag y orden. Devuelve (todos, visibles)."""
+    all_projects = db.query(Project).all()
+    activos = [f for f in filtros if f in FILTERS]
+
+    visible = [p for p in all_projects if _matches_search(p, q)]
+    for key in activos:
+        predicate = FILTERS[key][2]
+        visible = [p for p in visible if predicate(p, settings)]
     if tag:
-        projects = [p for p in projects if tag in p.tag_list()]
+        visible = [p for p in visible if tag in p.tag_list()]
 
-    # Cada proyecto cae en exactamente un grupo: favoritos (no archivados) arriba,
-    # luego activos / parados, y los archivados al final.
+    visible.sort(key=SORTS[orden][1])
+    return all_projects, visible
+
+
+def _grouped(projects: list[Project], stale_days: int):
+    """Favoritos arriba, luego activos, parados y archivados. Cada proyecto en un solo grupo."""
     favoritos = [p for p in projects if p.is_favorite and not p.is_archived]
     activos = [p for p in projects
                if not p.is_favorite and not p.is_archived and not _is_stale(p, stale_days)]
-    parados = [p for p in projects if not p.is_favorite and not p.is_archived and _is_stale(p, stale_days)]
+    parados = [p for p in projects
+               if not p.is_favorite and not p.is_archived and _is_stale(p, stale_days)]
     archivados = [p for p in projects if p.is_archived]
     groups = [
         ("Favoritos", "star", favoritos),
@@ -80,21 +129,131 @@ def list_projects(request: Request, filtro: str = "todos", tag: str | None = Non
         ("Parados", "moon", parados),
         ("Archivados", "archive", archivados),
     ]
-    groups = [g for g in groups if g[2]]  # ocultar grupos vacíos
+    return [g for g in groups if g[2]]  # ocultar grupos vacíos
 
-    all_tags = sorted({t for p in all_projects for t in p.tag_list()})
 
-    return templates.TemplateResponse(request, "dashboard.html", {
-        "groups": groups,
-        "shown": len(projects),
-        "summary": _summary(all_projects, stale_days),
-        "filtro": filtro,
-        "filtros": [(k, v[0]) for k, v in FILTERS.items()],
-        "all_tags": all_tags,
+def _view_context(db: Session, q: str, filtros: list[str], tag: str | None,
+                  orden: str, vista: str) -> dict:
+    orden = orden if orden in SORTS else DEFAULT_SORT
+    vista = vista if vista in ("tarjetas", "tabla") else "tarjetas"
+    filtros = [f for f in filtros if f in FILTERS]
+
+    all_projects, visible = _select(db, q, filtros, tag, orden)
+    stale_days = settings.stale_project_days
+    return {
+        "groups": _grouped(visible, stale_days),
+        "visible": visible,
+        "shown": len(visible),
+        # Dos resúmenes: el global alimenta los KPI (que siempre hablan de todo el
+        # panel) y el de lo visible acompaña a la lista, que es lo que el usuario
+        # está mirando tras filtrar.
+        "summary": _summary(all_projects, stale_days, settings.stale_pr_days),
+        "visible_summary": _summary(visible, stale_days, settings.stale_pr_days),
+        "q": q,
+        "filtros": filtros,
+        "filtros_disponibles": [(k, v[0], v[1]) for k, v in FILTERS.items()],
+        "orden": orden,
+        "ordenes": [(k, v[0]) for k, v in SORTS.items()],
+        "vista": vista,
+        "all_tags": sorted({t for p in all_projects for t in p.tag_list()}),
         "tag": tag,
         "stale_days": stale_days,
         "stale_pr_days": settings.stale_pr_days,
         "scan_path": settings.local_repos_base_path,
+    }
+
+
+@router.get("/")
+def list_projects(
+    request: Request,
+    q: str = "",
+    filtro: list[str] = Query(default=[]),
+    tag: str | None = None,
+    orden: str = DEFAULT_SORT,
+    vista: str = "tarjetas",
+    db: Session = Depends(get_db),
+):
+    context = _view_context(db, q.strip(), filtro, tag, orden, vista)
+    return templates.TemplateResponse(request, "dashboard.html", context)
+
+
+@router.get("/lista")
+def project_list_fragment(
+    request: Request,
+    q: str = "",
+    filtro: list[str] = Query(default=[]),
+    tag: str | None = None,
+    orden: str = DEFAULT_SORT,
+    vista: str = "tarjetas",
+    db: Session = Depends(get_db),
+):
+    """Solo la lista de proyectos. Lo pide HTMX al teclear en el buscador o al
+    cambiar orden/filtros, para no repintar la página entera en cada pulsación."""
+    context = _view_context(db, q.strip(), filtro, tag, orden, vista)
+    return templates.TemplateResponse(request, "_project_list.html", context)
+
+
+@router.get("/tv")
+def tv_mode(request: Request, db: Session = Depends(get_db)):
+    """Modo pantalla: solo el resumen y lo que necesita atención, con autorrefresco.
+
+    Pensado para dejarlo puesto en un monitor: sin formularios ni acciones, para
+    que no haga falta interactuar y no se pueda tocar nada sin querer.
+    """
+    projects = db.query(Project).filter(Project.is_archived.is_(False)).all()
+    stale_days = settings.stale_project_days
+    atencion = [
+        p for p in projects
+        if p.ci_status in CI_BAD
+        or p.sync_error
+        or _is_stale(p, stale_days)
+        or (p.oldest_open_pr_days or 0) > settings.stale_pr_days
+    ]
+    atencion.sort(key=lambda p: (p.ci_status not in CI_BAD, -(p.days_since_commit() or 0)))
+    return templates.TemplateResponse(request, "tv.html", {
+        "summary": _summary(projects, stale_days, settings.stale_pr_days),
+        "atencion": atencion,
+        "stale_days": stale_days,
+        "stale_pr_days": settings.stale_pr_days,
+    })
+
+
+@router.get("/estado")
+def system_status(request: Request, db: Session = Depends(get_db)):
+    """Salud del propio panel: qué jobs han corrido, cuota de la API y configuración.
+
+    Sin esta vista, un token caducado o un job caído solo se notaban porque los
+    datos dejaban de moverse, sin ninguna pista de por qué.
+    """
+    jobs = []
+    running = getattr(request.app.state, "scheduler", None)
+    for job_id, label in scheduler.JOB_LABELS.items():
+        status = scheduler.JOB_STATUS.get(job_id, {})
+        job = running.get_job(job_id) if running else None
+        jobs.append({
+            "id": job_id,
+            "label": label,
+            "last_at": status.get("at"),
+            "ok": status.get("ok"),
+            "detail": status.get("detail"),
+            "next_at": getattr(job, "next_run_time", None) if job else None,
+        })
+
+    errores = [
+        p for p in db.query(Project).all() if p.sync_error
+    ]
+    return templates.TemplateResponse(request, "estado.html", {
+        "jobs": jobs,
+        "errores": errores,
+        "rate_limit": github_client.rate_limit,
+        "telegram_ok": telegram.is_configured(),
+        "github_token": bool(settings.github_token),
+        "auto_import": settings.auto_import_github,
+        "scan_path": settings.local_repos_base_path,
+        "scan_depth": settings.projects_scan_depth,
+        "discovery_minutes": settings.discovery_minutes,
+        "local_sync_minutes": settings.local_sync_minutes,
+        "remote_sync_minutes": settings.remote_sync_minutes,
     })
 
 
@@ -113,14 +272,33 @@ def project_detail(project_id: int, request: Request, db: Session = Depends(get_
         "p": project,
         "commits": commits,
         "todos": todos,
-        "readme_html": readme.render(readme_raw) if readme_raw else None,
+        "readme_html": readme.render(readme_raw, project.repo_url, project.branch) if readme_raw else None,
         "stale_days": settings.stale_project_days,
         "stale_pr_days": settings.stale_pr_days,
     })
 
 
+def _sync_in_background(project_id: int) -> None:
+    """Sincroniza fuera del ciclo petición-respuesta.
+
+    `sync_project` puede tardar decenas de segundos (cuatro llamadas HTTP con 10s
+    de timeout cada una). Hacerlo dentro del POST dejaba el navegador colgado y,
+    con varios proyectos, convertía "Sincronizar todo" en minutos de pantalla en
+    blanco. Aquí se responde ya y la página siguiente muestra el estado nuevo.
+    """
+    db = SessionLocal()
+    try:
+        project = db.get(Project, project_id)
+        if project:
+            sync_project(project)
+            db.commit()
+    finally:
+        db.close()
+
+
 @router.post("/nuevo")
 def create_project(
+    background: BackgroundTasks,
     name: str = Form(...),
     local_path: str = Form(""),
     remote_provider: str = Form(""),
@@ -142,14 +320,14 @@ def create_project(
     db.add(project)
     db.commit()
     db.refresh(project)
-    sync_project(project)
-    db.commit()
-    return redirect_flash("/", 'Proyecto "%s" añadido y sincronizado' % project.name)
+    background.add_task(_sync_in_background, project.id)
+    return redirect_flash("/", 'Proyecto "%s" añadido; sincronizando…' % project.name)
 
 
 @router.post("/{project_id}/editar")
 def edit_project(
     request: Request,
+    background: BackgroundTasks,
     project_id: int,
     name: str = Form(...),
     local_path: str = Form(""),
@@ -170,10 +348,10 @@ def edit_project(
     project.tags = _clean_tags(tags)
     project.description = description.strip() or None
     project.homepage_url = safe_external_url(homepage_url)
-    sync_project(project)
     db.commit()
+    background.add_task(_sync_in_background, project.id)
     referer = request.headers.get("referer") or "/"
-    return redirect_flash(referer, 'Proyecto "%s" actualizado y resincronizado' % project.name)
+    return redirect_flash(referer, 'Proyecto "%s" actualizado; resincronizando…' % project.name)
 
 
 @router.post("/{project_id}/favorito")
@@ -200,51 +378,32 @@ def toggle_archive(request: Request, project_id: int, db: Session = Depends(get_
 
 @router.post("/escanear")
 def scan_local_repos(db: Session = Depends(get_db)):
-    """Descubre repos git nuevos y marca los proyectos cuya ruta local ya no exista."""
-    existing_paths = {p.local_path for p in db.query(Project).filter(Project.local_path.isnot(None)).all()}
-    discovered = local_scanner.discover_repos(settings.local_repos_base_path)
-    nuevos = 0
-    for repo in discovered:
-        if repo["local_path"] in existing_paths:
-            continue
-        project = Project(name=repo["name"], local_path=repo["local_path"])
-        db.add(project)
-        db.flush()
-        sync_project(project)
-        nuevos += 1
+    """Descubrimiento a demanda: el mismo que corre solo cada `discovery_minutes`."""
+    result = discovery.run_discovery(db)
+    partes = ["%d nuevos en disco" % result["nuevos"]]
+    if result["remotos_nuevos"]:
+        partes.append("%d desde GitHub" % result["remotos_nuevos"])
+    if result["enlazados"]:
+        partes.append("%d enlazados a su remoto" % result["enlazados"])
+    if result["perdidos"]:
+        partes.append("%d con ruta desaparecida" % result["perdidos"])
 
-    # Detección de rutas desaparecidas en proyectos ya registrados
-    perdidos = 0
-    for project in db.query(Project).filter(Project.local_path.isnot(None)).all():
-        missing = not os.path.isdir(project.local_path)
-        if missing and not project.local_path_missing:
-            project.local_path_missing = True
-            project.local_error = "La ruta local ya no existe"
-            project.has_uncommitted_changes = False
-            perdidos += 1
-        elif not missing and project.local_path_missing:
-            sync_project(project)  # la ruta ha vuelto (disco montado de nuevo, etc.)
-    db.commit()
-
-    msg = "Escaneo completado: %d proyectos nuevos" % nuevos
-    if perdidos:
-        msg += ", %d con ruta desaparecida" % perdidos
-    return redirect_flash("/", msg, "success" if nuevos or not perdidos else "info")
+    categoria = "success"
+    msg = "Descubrimiento: " + ", ".join(partes)
+    if result["remote_error"]:
+        msg += " · GitHub: %s" % result["remote_error"]
+        categoria = "error"
+    return redirect_flash("/", msg, categoria)
 
 
 @router.post("/sincronizar-todo")
-def sync_all(db: Session = Depends(get_db)):
-    projects = db.query(Project).all()
-    errores = 0
-    for project in projects:
-        sync_project(project)
-        if project.sync_error:
-            errores += 1
-    db.commit()
-    msg = "%d proyectos sincronizados" % len(projects)
-    if errores:
-        msg += " (%d con errores)" % errores
-    return redirect_flash("/", msg, "success" if not errores else "info")
+def sync_all(background: BackgroundTasks, db: Session = Depends(get_db)):
+    ids = [p.id for p in db.query(Project).all()]
+    for project_id in ids:
+        background.add_task(_sync_in_background, project_id)
+    return redirect_flash(
+        "/", "Sincronizando %d proyectos en segundo plano…" % len(ids), "info"
+    )
 
 
 @router.post("/{project_id}/sincronizar")
@@ -314,9 +473,8 @@ def toggle_task(request: Request, task_id: int, db: Session = Depends(get_db)):
     if task is None:
         return Response(status_code=404)
     project_id = task.project_id
-    if task:
-        task.done = not task.done
-        db.commit()
+    task.done = not task.done
+    db.commit()
     return _tasks_fragment(request, db, project_id)
 
 
@@ -326,7 +484,6 @@ def delete_task(request: Request, task_id: int, db: Session = Depends(get_db)):
     if task is None:
         return Response(status_code=404)
     project_id = task.project_id
-    if task:
-        db.delete(task)
-        db.commit()
+    db.delete(task)
+    db.commit()
     return _tasks_fragment(request, db, project_id)

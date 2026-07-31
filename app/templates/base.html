@@ -16,7 +16,10 @@
 <header class="topbar">
     <a href="/" class="brand">{{ icon("folder-git-2", 20) }} <span>Proyectos</span></a>
     <nav class="nav-links">
-        <a href="/" class="active">{{ icon("layout-dashboard") }}<span>Dashboard</span></a>
+        {% set ruta = request.url.path %}
+        <a href="/" class="{{ 'active' if ruta == '/' else '' }}">{{ icon("layout-dashboard") }}<span>Dashboard</span></a>
+        <a href="/tv" class="{{ 'active' if ruta == '/tv' else '' }}">{{ icon("tv") }}<span>Panel</span></a>
+        <a href="/estado" class="{{ 'active' if ruta == '/estado' else '' }}">{{ icon("activity") }}<span>Estado</span></a>
     </nav>
 </header>
 <main class="container">

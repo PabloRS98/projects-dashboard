@@ -1,0 +1,111 @@
+{# Lista de proyectos. Se sirve suelta a HTMX (buscador, orden, filtros) y también
+   embebida en el dashboard, para no tener dos versiones del mismo marcado. #}
+{% from "_icons.html" import icon %}
+{% from "_widgets.html" import ci_dot, sparkline, estado_badges %}
+
+{# El recuento viaja con la lista: si se quedara en la barra de control, al
+   filtrar por HTMX seguiría anunciando el total anterior. #}
+<p class="list-count subtle">
+    {{ shown }} de {{ summary.total }} proyectos
+    {%- if visible_summary.estrellas %} · {{ visible_summary.estrellas }} ★{% endif %}
+    {%- if visible_summary.todos %} · {{ visible_summary.todos }} TODOs{% endif %}
+    {%- if visible_summary.prs %} · {{ visible_summary.prs }} PRs{% endif %}
+</p>
+
+{% if not groups %}
+<section class="card">
+    <div class="empty">{{ icon("inbox", 30) }}
+        {% if q or filtros or tag %}
+        Ningún proyecto cumple los criterios.
+        {% else %}
+        Sin proyectos aún. El descubrimiento automático corre solo al arrancar; también puedes lanzarlo a mano.
+        {% endif %}
+    </div>
+</section>
+
+{% elif vista == "tabla" %}
+<section class="card table-wrap">
+    <table class="dense">
+        <thead>
+            <tr>
+                <th></th><th>Proyecto</th><th>Estado</th><th class="num">PRs</th>
+                <th class="num">Issues</th><th class="num">★</th><th class="num">TODOs</th>
+                <th>Actividad</th><th class="num">Último commit</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for title, gicon, items in groups %}
+            {% for p in items %}
+            <tr class="{{ 'archived' if p.is_archived else '' }}">
+                <td>{{ ci_dot(p.ci_status) }}{% if p.is_favorite %}{{ icon("star", 12) }}{% endif %}</td>
+                <td><a href="/proyecto/{{ p.id }}">{{ p.name }}</a>
+                    {% if p.description %}<div class="subtle">{{ p.description|truncate(60) }}</div>{% endif %}</td>
+                <td class="badges">{{ estado_badges(p, stale_days, stale_pr_days) }}</td>
+                <td class="num">{{ p.open_prs if p.open_prs is not none else "–" }}</td>
+                <td class="num">{{ p.open_issues if p.open_issues is not none else "–" }}</td>
+                <td class="num">{{ p.stars if p.stars is not none else "–" }}</td>
+                <td class="num">{{ p.todo_count if p.todo_count is not none else "–" }}</td>
+                <td>{{ sparkline(p.week_counts(), 80, 18) }}</td>
+                <td class="num subtle">{{ p.last_commit_date|timeago if p.last_commit_date else "–" }}</td>
+            </tr>
+            {% endfor %}
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% else %}
+{% for title, gicon, items in groups %}
+<div class="group-head {{ title|lower }}">{{ icon(gicon, 16) }} {{ title }} <span class="count">{{ items|length }}</span></div>
+<div class="group-cards">
+    {% for p in items %}{% include "_card.html" %}{% endfor %}
+</div>
+{% endfor %}
+{% endif %}
+
+{# Los diálogos de edición viajan con la lista: si se quedaran fuera, al
+   refrescar por HTMX apuntarían a proyectos que ya no están en pantalla. #}
+{% for title, gicon, items in groups %}{% for p in items %}
+<dialog id="dlg-project-{{ p.id }}">
+    <h3>{{ icon("pencil") }} Editar proyecto</h3>
+    <form method="post" action="/{{ p.id }}/editar" class="form-grid">
+        <div class="field full">
+            <label>Nombre</label>
+            <input type="text" name="name" value="{{ p.name }}" required>
+        </div>
+        <div class="field full">
+            <label>Ruta local (vacío = solo-remoto)</label>
+            <input type="text" name="local_path" value="{{ p.local_path or '' }}" placeholder="{{ scan_path }}/mi-proyecto">
+        </div>
+        <div class="field">
+            <label>Remoto</label>
+            <select name="remote_provider">
+                <option value="">Sin remoto</option>
+                {% for prov in ["github", "gitlab", "bitbucket"] %}
+                <option value="{{ prov }}" {% if p.remote_provider == prov %}selected{% endif %}>{{ prov|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label>owner/repo</label>
+            <input type="text" name="remote_repo" value="{{ p.remote_repo or '' }}">
+        </div>
+        <div class="field full">
+            <label>Descripción</label>
+            <input type="text" name="description" value="{{ p.description or '' }}" placeholder="Se autorrellena desde el forge si la dejas vacía">
+        </div>
+        <div class="field">
+            <label>Web / deploy</label>
+            <input type="url" name="homepage_url" value="{{ p.homepage_url or '' }}" placeholder="https://...">
+        </div>
+        <div class="field">
+            <label>Tags (coma)</label>
+            <input type="text" name="tags" value="{{ p.tags or '' }}" placeholder="web, cli...">
+        </div>
+        <div class="dialog-actions full">
+            <button type="button" class="ghost" data-close-dialog>Cancelar</button>
+            <button type="submit">{{ icon("check", 15) }} Guardar y resincronizar</button>
+        </div>
+    </form>
+</dialog>
+{% endfor %}{% endfor %}
