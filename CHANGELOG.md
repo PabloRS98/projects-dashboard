@@ -36,6 +36,13 @@ razonamiento completo sin buscarlo.
 
 ### Seguridad
 
+- **[PD-A7]** Cabeceras de seguridad HTTP: `Content-Security-Policy`,
+  `X-Content-Type-Options` y `Referrer-Policy`. La app renderiza HTML generado
+  desde el Markdown de repositorios de terceros, y el saneado por lista blanca
+  con `nh3` era la única capa. `img-src` se deja abierto a `https:` a propósito,
+  porque los README traen badges de dominios arbitrarios; `script-src` va
+  acotado a `'self'`, que es lo que corta la exfiltración.
+
 - **[PD-A1]** El filtro `tojson` de las plantillas vuelve a escapar. Se
   sobrescribía con un `json.dumps` crudo para poder serializar fechas, y de paso
   se perdía el escapado de `<`, `>`, `&` y `'` que hace el nativo de Jinja. Hoy
