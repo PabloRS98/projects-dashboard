@@ -455,6 +455,12 @@ def _tasks_fragment(request: Request, db: Session, project_id: int):
 
 @router.post("/{project_id}/tareas")
 def add_task(request: Request, project_id: int, text: str = Form(...), db: Session = Depends(get_db)):
+    # Comprobar ANTES de crear: `_tasks_fragment` también lo comprueba, pero corre
+    # al final, y para entonces la tarea ya estaba creada y commiteada colgando de
+    # un proyecto inexistente. Basta con dos pestañas abiertas: se borra el
+    # proyecto en una y se añade una tarea en la otra.
+    if db.get(Project, project_id) is None:
+        return Response(status_code=404)
     if text.strip():
         # max(order)+1, no count(): con count(), borrar una tarea intermedia hace
         # que la siguiente nazca con un `order` que ya existe.

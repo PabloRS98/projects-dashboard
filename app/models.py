@@ -159,7 +159,13 @@ class TaskItem(Base):
     __tablename__ = "task_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    # ondelete=CASCADE igual que en ProjectSnapshot: hoy quien borra de verdad es
+    # el `cascade` de la relación (SQLite no aplica las claves foráneas sin el
+    # PRAGMA), pero deja el esquema correcto para cuando se activen o se migre a
+    # otro motor. Las bases ya creadas conservan la FK sin ON DELETE hasta que
+    # haya migraciones que sepan recrear la tabla ([PD-M15]); las huérfanas que
+    # dejó [PD-A4] las barre `limpiar_tareas_huerfanas` en cada arranque.
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     text: Mapped[str] = mapped_column(String(500))
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int] = mapped_column(Integer, default=0)

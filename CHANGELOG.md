@@ -6,6 +6,17 @@ razonamiento completo sin buscarlo.
 
 ## Sin publicar
 
+### Corrección
+
+- **[PD-A4]** `add_task` comprueba que el proyecto existe antes de crear la
+  tarea. La comprobación vivía en `_tasks_fragment`, que corre al final, así que
+  la fila ya estaba creada y commiteada colgando de un `project_id` inexistente.
+  Se llega con dos pestañas abiertas: se borra el proyecto en una y se añade una
+  tarea en la otra. Además, `TaskItem.project_id` pasa a `ondelete="CASCADE"` y
+  el arranque barre las tareas huérfanas que dejó el fallo, que no se limpiaban
+  solas porque SQLite no aplica las claves foráneas sin el PRAGMA — y como
+  reasigna los ids, un proyecto nuevo podía heredar las tareas de uno borrado.
+
 ### Seguridad
 
 - **[PD-A1]** El filtro `tojson` de las plantillas vuelve a escapar. Se
