@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 from jinja2 import StrictUndefined
+from jinja2.utils import htmlsafe_json_dumps
 
 # Ruta absoluta derivada del propio módulo: con una ruta relativa, la app solo
 # arranca si el directorio de trabajo es la raíz del repositorio.
@@ -17,7 +18,29 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # `Undefined`, que es falsy, así que un `{% if %}` sobre ella falla en silencio
 # y el bloque simplemente no se pinta: un fallo así puede pasar meses sin verse.
 templates.env.undefined = StrictUndefined
-templates.env.filters["tojson"] = lambda value: json.dumps(value, default=str)
+
+
+def _tojson(value):
+    """`tojson` que serializa fechas (default=str) SIN perder el escapado de Jinja.
+
+    El filtro nativo no sabe serializar date/datetime —y las series del histórico
+    van llenas—, que es por lo que aquí se sobrescribía. Pero un `json.dumps` a
+    secas no escapa nada: deja pasar "</script>" y permite cerrar el bloque
+    <script> desde cualquier dato guardado. Los candidatos son inmediatos y
+    ninguno hace falta que lo escriba el usuario: `Project.name` sale también del
+    nombre de la carpeta en disco y de la API de GitHub, y `Project.description`
+    se autorrellena desde GitHub en cada sincronización.
+
+    `htmlsafe_json_dumps` escapa `<`, `>`, `&` y `'` como `\\uXXXX` y devuelve
+    `Markup`, así que el resultado ya es seguro de incrustar y el `| safe` de las
+    plantillas sobra. Hoy ninguna plantilla usa el filtro; la primera gráfica que
+    se añada abriría el agujero sin que nadie lo mirara, porque "es solo un
+    filtro de JSON". Ver tests/test_templating.py.
+    """
+    return htmlsafe_json_dumps(value, dumps=lambda v, **kw: json.dumps(v, default=str, **kw))
+
+
+templates.env.filters["tojson"] = _tojson
 
 
 def timeago(value: datetime | None) -> str:
