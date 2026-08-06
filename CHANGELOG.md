@@ -8,6 +8,13 @@ razonamiento completo sin buscarlo.
 
 ### Corrección
 
+- **[PD-A5]** `BACKUP_KEEP=0` vuelve a significar lo que dice. `existing[:-0]`
+  es `existing[:0]` —lista vacía—, no "todos", así que configurarlo a 0 no
+  borraba ningún backup: exactamente lo contrario de la intención, y el disco
+  llenándose. Ahora con 0 se conserva al menos la copia recién creada. Es el
+  mismo bug que `media-catalog` ya había arreglado en el mismo fichero copiado;
+  se trae su línea y su comentario tal cual.
+
 - **[PD-A6]** Los avisos de Telegram escapan el nombre del proyecto, y el flag
   de deduplicación solo se marca si el envío funcionó. Los mensajes van con
   `parse_mode: "HTML"` y el nombre se interpolaba crudo: un repositorio llamado
