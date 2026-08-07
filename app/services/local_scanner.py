@@ -2,16 +2,43 @@
 cambios sin commitear, TODOs/FIXMEs en el codigo)."""
 import logging
 import os
+import re
 import subprocess
+import time
 from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
-IGNORED_DIRS = {".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build", ".idea", ".vscode"}
+IGNORED_DIRS = {
+    ".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build",
+    ".idea", ".vscode",
+    # Salida de compilación y dependencias de otros ecosistemas: sus TODOs no
+    # son del proyecto y pueden ser cientos de miles. Sin esto, un repo de Rust
+    # con `target/` o uno de Go con `vendor/` multiplicaba el recuento y el
+    # tiempo de escaneo por lo que ocupara su directorio de artefactos.
+    "target", "vendor", ".next", ".nuxt", "coverage", ".tox", ".mypy_cache",
+    ".pytest_cache", ".ruff_cache", ".gradle", "Pods", "bin", "obj",
+}
 TODO_EXTENSIONS = {
     ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".rb",
     ".php", ".c", ".cpp", ".h", ".md", ".html", ".css",
 }
+
+# Palabra completa: "TODO" suelto casaba dentro de TODOS_LOS_USUARIOS, METODOS o
+# TODO_EXTENSIONS. De hecho este mismo fichero se contaba a sí mismo.
+TODO_PATTERN = re.compile(r"\b(?:TODO|FIXME)\b")
+
+# Un fichero mayor que esto no se lee. Los bundles minificados van en una sola
+# línea, así que el iterador de líneas mete el fichero entero en memoria como una
+# única cadena buscando un salto que no llega. 1 MB de código fuente escrito a
+# mano no existe; lo que pasa de ahí es generado.
+MAX_FILE_BYTES = 1_000_000
+
+# Topes de recorrido. No son límites de corrección sino de tiempo: un repo con un
+# submódulo grande o un directorio de assets puede tardar minutos, y esto corría
+# dentro de la petición. Cuando se alcanzan, el resultado se marca `parcial`.
+MAX_FILES = 20_000
+MAX_SECONDS = 20.0
 
 
 def discover_repos(root_path: str) -> list[dict]:
@@ -179,24 +206,48 @@ def read_readme(path: str, max_chars: int = 40000) -> str | None:
         return None
 
 
-def scan_todos(path: str, max_results: int = 500) -> dict:
-    """Cuenta y lista comentarios TODO/FIXME en los archivos de texto del proyecto."""
+def scan_todos(
+    path: str,
+    max_results: int = 500,
+    max_file_bytes: int = MAX_FILE_BYTES,
+    max_files: int = MAX_FILES,
+    max_seconds: float = MAX_SECONDS,
+) -> dict:
+    """Cuenta y lista comentarios TODO/FIXME en los archivos de texto del proyecto.
+
+    Devuelve `{"count", "items", "parcial"}`. `parcial` avisa de que se alcanzó
+    el tope de ficheros o el de tiempo y el recuento se quedó corto: es
+    preferible un número incompleto y señalado a que el escaneo se coma minutos.
+
+    `max_results` limita los items que se guardan, no el recuento: el contador
+    sigue siendo exacto mientras no se marque `parcial`.
+    """
     if not path or not os.path.isdir(path):
-        return {"count": 0, "items": []}
+        return {"count": 0, "items": [], "parcial": False}
 
     items = []
     count = 0
+    vistos = 0
+    parcial = False
+    limite = time.monotonic() + max_seconds
+
     for dirpath, dirnames, filenames in os.walk(path):
         dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
         for filename in filenames:
             ext = os.path.splitext(filename)[1]
             if ext not in TODO_EXTENSIONS:
                 continue
+            if vistos >= max_files or time.monotonic() > limite:
+                parcial = True
+                break
             file_path = os.path.join(dirpath, filename)
             try:
+                if os.path.getsize(file_path) > max_file_bytes:
+                    continue
+                vistos += 1
                 with open(file_path, encoding="utf-8", errors="ignore") as f:
                     for line_num, line in enumerate(f, start=1):
-                        if "TODO" in line or "FIXME" in line:
+                        if TODO_PATTERN.search(line):
                             count += 1
                             if len(items) < max_results:
                                 items.append({
@@ -205,5 +256,11 @@ def scan_todos(path: str, max_results: int = 500) -> dict:
                                     "text": line.strip()[:200],
                                 })
             except Exception:
+                logger.debug("No se pudo leer %s al contar TODOs", file_path)
                 continue
-    return {"count": count, "items": items}
+        if parcial:
+            break
+
+    if parcial:
+        logger.info("Conteo de TODOs parcial en %s: %d ficheros revisados", path, vistos)
+    return {"count": count, "items": items, "parcial": parcial}
