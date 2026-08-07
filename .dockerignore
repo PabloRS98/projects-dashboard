@@ -1,0 +1,59 @@
+# Qué NO se manda al daemon de Docker al construir la imagen.
+#
+# El Dockerfile solo hace `COPY requirements.txt .` y `COPY app ./app`, así que
+# hoy nada de esto llegaría a la imagen final. Pero sin este fichero todo el
+# directorio viaja al daemon en cada build y se guarda en la caché de capas —
+# incluidos el .env con el token de GitHub y las bases de datos. Y el día que
+# alguien escriba un `COPY . .`, que es el error más habitual del mundo, esos
+# secretos acaban dentro de una imagen que además se construye en CI.
+#
+# Alineado con .gitignore, que ya estaba bien hecho.
+
+# Secretos
+.env
+.env.*
+!.env.example
+*.token
+*secret*
+*credential*
+
+# Bases de datos (el volumen y la de desarrollo)
+data/
+data-dev/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Control de versiones y CI: la imagen no necesita el historial
+.git/
+.gitignore
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Las pruebas no se ejecutan dentro de la imagen
+tests/
+requirements-dev.txt
+
+# Documentación y auditorías
+*.md
+Auditorias/
+
+# IDE y sistema operativo
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
