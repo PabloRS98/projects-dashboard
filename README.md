@@ -113,9 +113,35 @@ cambiarlo todo. Antes de sacarla de `localhost`:
   Si lo cambias a `0.0.0.0`, asegúrate de tener lo anterior resuelto.
 
 Protecciones ya incorporadas: comprobación de origen contra CSRF en toda
-petición que cambia estado, redirecciones limitadas a rutas internas, saneado
-del README por lista blanca (`nh3`) y validación de esquemas en las URLs que
-introduce el usuario.
+petición que cambia estado, cabeceras de seguridad HTTP (CSP, `nosniff`,
+`Referrer-Policy`), redirecciones limitadas a rutas internas, saneado del README
+por lista blanca (`nh3`) y validación de esquemas en las URLs que introduce el
+usuario.
+
+### Los secretos del `.env`
+
+El `.env` está en `.gitignore`, así que no llega al repositorio. Eso evita
+publicarlo, pero no lo respalda: si se pierde este disco, se pierde la
+configuración y hay que regenerar el token de GitHub y el del bot de Telegram.
+
+Las tres aplicaciones de esta carpeta comparten un `../.sops.yaml` con una clave
+`age` para versionar el `.env` cifrado:
+
+```bash
+sops --encrypt .env > .env.enc     # se versiona
+sops --decrypt .env.enc > .env     # al reconstruir el despliegue
+```
+
+**Lo importante no es el cifrado, es la clave.** Un `.env.enc` sin la clave
+privada para descifrarlo no sirve de nada, y la clave no está en el repositorio
+por definición: va en `%APPDATA%\sops\age\keys.txt` (o donde apunte
+`SOPS_AGE_KEY_FILE`) y hay que respaldarla aparte — gestor de contraseñas o
+copia fuera de esta máquina.
+
+> **Estado actual:** este proyecto todavía no tiene `.env.enc`. En la máquina de
+> desarrollo no están instalados `sops` ni `age`, y la clave privada de
+> `../.sops.yaml` no aparece en ninguna de las rutas estándar. Hasta que la clave
+> esté localizada y respaldada, cifrar aquí no aportaría nada. Ver [PD-A9].
 
 Si accedes por un nombre de host distinto al que ve el proxy inverso, añádelo a
 `TRUSTED_ORIGINS` (separados por comas) o la comprobación CSRF rechazará los
@@ -125,7 +151,7 @@ formularios.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 161 pruebas
+pytest -q          # 203 pruebas
 ruff check .
 ```
 

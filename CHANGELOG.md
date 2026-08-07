@@ -36,6 +36,13 @@ razonamiento completo sin buscarlo.
 
 ### Infraestructura
 
+- **[PD-A9]** *(parcial)* Se documenta en el README el procedimiento de cifrado
+  y descifrado del `.env` con SOPS, y por qué el respaldo de la clave `age`
+  importa más que el propio cifrado. **El cifrado en sí queda pendiente**: en la
+  máquina de desarrollo no están instalados `sops` ni `age`, y la clave privada
+  de `../.sops.yaml` no aparece en ninguna de las rutas estándar. Cifrar sin
+  tener localizada la clave produciría un `.env.enc` que nadie puede abrir.
+
 - **[PD-A8]** Se añade `.dockerignore`, que no existía. El `Dockerfile` solo
   copia `requirements.txt` y `app/`, así que nada de lo excluido llegaba a la
   imagen — pero el directorio entero viajaba al daemon en cada build y se
