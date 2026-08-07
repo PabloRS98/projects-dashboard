@@ -141,8 +141,6 @@ def test_alta_automatica_desde_github(db, monkeypatch):
         {"full_name": "pablo/uno", "name": "uno"},
         {"full_name": "pablo/dos", "name": "dos"},
     ])
-    # El alta dispara un sync completo; aquí solo interesa el descubrimiento.
-    monkeypatch.setattr(discovery, "sync_project", lambda p: None)
 
     resultado = discovery.run_discovery(db)
 
@@ -162,7 +160,6 @@ def test_no_duplica_un_repo_que_ya_esta_por_su_clon_local(db, monkeypatch):
     monkeypatch.setattr(discovery.settings, "auto_import_github", True)
     monkeypatch.setattr(discovery.settings, "github_token", "tok")
     monkeypatch.setattr(github_client, "list_user_repos", lambda: [{"full_name": "pablo/uno", "name": "uno"}])
-    monkeypatch.setattr(discovery, "sync_project", lambda p: None)
 
     resultado = discovery.run_discovery(db)
 
