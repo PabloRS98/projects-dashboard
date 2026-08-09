@@ -615,6 +615,22 @@ details[open] summary { margin-bottom: .7rem; }
 .spark-bar { fill: var(--accent); }
 .spark-bar.empty { fill: var(--border-2); }
 
+/* ---------- Tendencias del histórico ---------- */
+/* La tarjeta reutiliza .stat-head y .big-number de las tarjetas de resumen: es
+   la misma jerarquía visual (etiqueta, cifra grande, matiz debajo) y así una
+   métrica se lee igual esté donde esté. */
+.trend-card { display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+.trend-card .stat-head { display: flex; align-items: center; gap: .5rem; color: var(--text-2); font-size: .82rem; font-weight: 550; }
+.trend-delta { display: flex; align-items: center; gap: .3rem; font-size: .78rem; color: var(--text-3); }
+.trend-delta.positive { color: var(--positive); }
+.trend-delta.warning { color: var(--warning); }
+
+/* preserveAspectRatio="none" en el SVG: la línea se estira al ancho de la
+   tarjeta sin recalcular las coordenadas, que van en un viewBox fijo. */
+.trend { display: block; width: 100%; height: 64px; margin-top: .2rem; }
+.trend-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke;
+              stroke-linejoin: round; stroke-linecap: round; }
+
 /* ---------- Vista de tabla densa ---------- */
 table.dense td { vertical-align: top; }
 table.dense tr.archived { opacity: .6; }

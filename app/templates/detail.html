@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% from "_widgets.html" import sparkline %}
+{% from "_widgets.html" import sparkline, trend_card %}
 {% block title %}{{ p.name }} · Proyectos{% endblock %}
 {% block content %}
 
@@ -80,6 +80,18 @@
         </form>
     </div>
 </section>
+
+{% if tendencias|selectattr("puntos")|list %}
+{# Solo si hay histórico: sin datos, la sección entera sobra en la ficha. En
+   /estado sí se enseña vacía, porque allí se está mirando el estado del propio
+   panel y "aún no hay histórico" es información. #}
+<section class="card">
+    <h3>{{ icon("chart-column") }} Evolución</h3>
+    <div class="grid-summary">
+        {% for t in tendencias %}{% if t.puntos %}{{ trend_card(t) }}{% endif %}{% endfor %}
+    </div>
+</section>
+{% endif %}
 
 {% if readme_html %}
 {# Plegado por defecto: un README largo enterraba commits, TODOs y tareas varias

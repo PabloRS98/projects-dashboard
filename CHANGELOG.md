@@ -6,6 +6,22 @@ razonamiento completo sin buscarlo.
 
 ## Sin publicar
 
+### Nuevo
+
+- **[PD-A2]** Vista de tendencias, en `/estado` (agregada de todo el panel) y en
+  la ficha de cada proyecto (la suya). Cierra el hallazgo por el camino A:
+  completar el subsistema en vez de retirarlo. Había un modelo `ProjectSnapshot`,
+  un job diario, poda a 400 días, cascada de borrado y su suite de tests, y
+  **ninguna vista leía nada**: `series()` solo se invocaba desde sus propios
+  tests. Ahora se pintan cuatro métricas —commits, PRs, issues y TODOs— con la
+  cifra de hoy, cuánto ha cambiado y desde cuándo. Sin librerías de gráficos: una
+  polilínea SVG, igual que el `sparkline` que ya existía.
+
+  Con menos de dos puntos no se dibuja nada y se dice por qué: una recta
+  horizontal parecería un dato estable cuando lo que pasa es que el histórico
+  todavía está vacío. El delta cuenta **los días que hay de dato**, no la ventana
+  pedida, porque "−195 en 90 días" con dos semanas de histórico es falso.
+
 ### Rendimiento
 
 - **[PD-M9]** `scan_todos` deja de recorrer el árbol sin límites: se salta los
