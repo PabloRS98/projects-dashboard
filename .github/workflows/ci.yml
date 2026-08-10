@@ -30,9 +30,61 @@ jobs:
           git config --global user.name "CI"
           pytest -q
 
+  auditoria:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Las dependencias van pinneadas, así que sin esto una vulnerabilidad
+      # publicada no se entera nadie hasta que alguien mira a mano. Vigilar
+      # sobre todo nh3: es el saneador del HTML de terceros.
+      - name: Auditar dependencias
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Construir la imagen
         run: docker build -t projects-dashboard:ci .
+
+      # El CI construía la imagen y no la arrancaba nunca: un fallo de arranque
+      # —una variable que falta, un fichero que no se copia— no lo caza ninguna
+      # prueba unitaria porque no está en el código.
+      - name: Levantarla y comprobar que responde
+        run: |
+          docker run -d --name pd-ci -e DB_PATH=/tmp/ci.db -e ENABLE_AUTH=false \
+            -p 8000:8000 projects-dashboard:ci
+          for intento in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/salud > /dev/null; then
+              echo "arrancó al intento $intento"
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/salud
+
+      - name: Pedir las rutas principales
+        run: |
+          for ruta in / /lista /estado /tv /salud; do
+            codigo=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8000$ruta")
+            echo "$ruta -> $codigo"
+            [ "$codigo" = "200" ] || exit 1
+          done
+
+      - name: Comprobar que no corre como root
+        run: |
+          uid=$(docker exec pd-ci id -u)
+          echo "uid del proceso: $uid"
+          [ "$uid" != "0" ] || exit 1
+
+      - name: Registro del contenedor
+        if: always()
+        run: docker logs pd-ci || true

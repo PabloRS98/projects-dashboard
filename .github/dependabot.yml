@@ -1,0 +1,36 @@
+# Las dependencias van pinneadas, que está bien, pero sin nadie que las suba se
+# quedan congeladas. Hoy este proyecto tiene las versiones más nuevas de las tres
+# aplicaciones, pero eso es porque es reciente, no porque haya un proceso que lo
+# mantenga así. A `finance-tracker` se le dejaron dos años y acumuló 19
+# vulnerabilidades conocidas, tres de ellas en el camino de cada petición HTTP.
+#
+# Agrupadas en un solo PR semanal a propósito: once dependencias sueltas serían
+# once PRs que nadie mira, y el CI ya construye la imagen, así que un grupo
+# entero se valida de una vez. Los saltos de versión mayor van aparte, porque
+# esos sí hay que leerlos.
+#
+# Vigilar especialmente `nh3`: es el saneador del HTML de terceros, así que una
+# vulnerabilidad ahí es directamente un XSS en la ficha de cualquier proyecto.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      # Sin prefijos tipo Conventional Commits: no se usan en este repo.
+      prefix: "Actualizar"
+    groups:
+      menores:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # El propio CI: una acción abandonada es tan problema como una librería vieja.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "Actualizar"

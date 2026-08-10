@@ -149,6 +149,22 @@ razonamiento completo sin buscarlo.
 
 ### Infraestructura
 
+- **[PD-B11]** y **[PD-B10]** El contenedor deja de correr como root. Era la
+  única de las tres aplicaciones que lo hacía, y la única que ejecuta
+  subprocesos (`git`) sobre rutas que controla el usuario. El cambio va en un
+  entrypoint y no en un `USER` del Dockerfile porque el volumen de `/data` puede
+  venir de un despliegue anterior con ficheros de root. Además `docker-compose`
+  añade `read_only`, `tmpfs: /tmp`, `no-new-privileges` y `cap_drop: ALL`,
+  dejando solo las cuatro capacidades que el entrypoint necesita para bajar
+  privilegios. Verificado ejecutando: proceso con UID 999, `/data` escribible,
+  `git` leyendo los repos montados en solo lectura y las cuatro rutas a 200.
+
+- **[PD-M16]** El CI audita las dependencias con `pip-audit` y hay Dependabot
+  configurado. Y el job de Docker ya no solo construye la imagen: la levanta,
+  espera a `/salud`, pide las rutas principales exigiendo 200 y comprueba que el
+  proceso no corre como root. Es la clase de fallo que ninguna prueba unitaria
+  ve, porque no está en el código.
+
 - **[PD-A9]** *(parcial)* Se documenta en el README el procedimiento de cifrado
   y descifrado del `.env` con SOPS, y por qué el respaldo de la clave `age`
   importa más que el propio cifrado. **El cifrado en sí queda pendiente**: en la

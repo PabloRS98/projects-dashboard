@@ -20,6 +20,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
+# Usuario sin privilegios. El cambio real lo hace el entrypoint, no un `USER`
+# aquí: el volumen de /data puede venir de un despliegue anterior con ficheros
+# de root, y entonces la app arrancaría sin poder escribir la base.
+RUN useradd --system --create-home --shell /usr/sbin/nologin app
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # /data → base de datos y backups (lectura-escritura)
 # /repos → repositorios locales a vigilar (basta lectura)
 VOLUME ["/data"]
@@ -29,4 +37,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/salud')"
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
