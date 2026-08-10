@@ -80,9 +80,13 @@ jobs:
           done
 
       - name: Comprobar que no corre como root
+        # Se lee el UID del PID 1, que es el uvicorn que arranca el entrypoint.
+        # `docker exec ... id -u` NO vale: exec entra con el usuario por defecto
+        # de la imagen (root), no con el del proceso que está corriendo, así que
+        # diría 0 aunque la app estuviera bien.
         run: |
-          uid=$(docker exec pd-ci id -u)
-          echo "uid del proceso: $uid"
+          uid=$(docker exec pd-ci awk '/^Uid:/ {print $2}' /proc/1/status)
+          echo "uid del proceso principal: $uid"
           [ "$uid" != "0" ] || exit 1
 
       - name: Registro del contenedor
