@@ -11,13 +11,10 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Project
+from ..models import CI_BAD, CI_GOOD, Project
 from . import telegram
 
 logger = logging.getLogger(__name__)
-
-CI_BAD = {"failure", "failed", "error", "cancelled", "timed_out"}
-CI_GOOD = {"success", "passed", "completed"}
 
 
 def _is_stale(project: Project) -> bool:

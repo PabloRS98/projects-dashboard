@@ -14,6 +14,13 @@ REPO_BASE_URLS = {
     "bitbucket": "https://bitbucket.org/",
 }
 
+# Vocabulario de CI, en un solo sitio. Estaba duplicado en el router y en
+# alerts.py con el mismo contenido, y una tercera versión escrita a mano en
+# detail.html a la que le faltaban `cancelled` y `timed_out`: el mismo pipeline
+# cancelado salía gris en la ficha y rojo en la tarjeta.
+CI_BAD = {"failure", "failed", "error", "cancelled", "timed_out"}
+CI_GOOD = {"success", "passed", "completed"}
+
 
 def utcnow() -> datetime:
     """UTC naive (compatible con las filas ya guardadas); evita datetime.utcnow(), deprecado en 3.12."""
@@ -168,5 +175,10 @@ class TaskItem(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     text: Mapped[str] = mapped_column(String(500))
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # `order` es palabra reservada de SQL. SQLAlchemy la entrecomilla siempre, así
+    # que la app funciona; lo que falla es cualquier consulta escrita a mano
+    # (`SELECT ... ORDER BY order`) o un dump revisado con sqlite3. Renombrarla
+    # exige recrear la tabla, así que se queda hasta que haya migraciones que
+    # sepan hacerlo ([PD-M15]). Mientras tanto, entrecomíllala tú también.
     order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

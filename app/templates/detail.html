@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% from "_widgets.html" import sparkline, trend_card %}
+{% from "_widgets.html" import ci_dot, sparkline, trend_card %}
 {% block title %}{{ p.name }} · Proyectos{% endblock %}
 {% block content %}
 
@@ -14,9 +14,10 @@
         <form method="post" action="/{{ p.id }}/favorito">
             <button type="submit" class="ghost small icon-btn star-btn {{ 'on' if p.is_favorite else '' }}" title="{{ 'Quitar de favoritos' if p.is_favorite else 'Marcar favorito' }}">{{ icon("star", 16) }}</button>
         </form>
-        {% if p.ci_status %}
-        <span class="ci-dot {{ 'ok' if p.ci_status in ('success', 'passed') else ('bad' if p.ci_status in ('failure', 'failed', 'error') else 'run') }}" title="CI: {{ p.ci_status }}"></span>
-        {% endif %}
+        {# El macro y no una copia escrita a mano: a la de aquí le faltaban
+           `cancelled` y `timed_out`, así que un pipeline cancelado salía gris en
+           esta pantalla y rojo en la tarjeta, para el mismo proyecto. #}
+        {{ ci_dot(p.ci_status) }}
         <h2>{{ p.name }}</h2>
         {% if p.is_archived %}<span class="tag">{{ icon("archive", 12) }} archivado</span>{% endif %}
         {% if parado %}<span class="tag warning">{{ icon("moon", 12) }} parado {{ dias }}d</span>{% endif %}
@@ -66,11 +67,13 @@
         no lo da {{ proveedor_nombre }}.</p>
     {% endif %}
 
-    {% if p.week_counts() %}
+    {# Una sola llamada: cada una deserializa el JSON de commit_weeks otra vez. #}
+    {% set semanas = p.week_counts() %}
+    {% if semanas %}
     <div class="activity-block">
-        <span class="subtle">{{ icon("chart-column", 13) }} Actividad ({{ p.week_counts()|length }} semanas)</span>
-        {{ sparkline(p.week_counts(), 260, 34) }}
-        <span class="subtle">{{ p.week_counts()|sum }} commits</span>
+        <span class="subtle">{{ icon("chart-column", 13) }} Actividad ({{ semanas|length }} semanas)</span>
+        {{ sparkline(semanas, 260, 34) }}
+        <span class="subtle">{{ semanas|sum }} commits</span>
     </div>
     {% endif %}
 
