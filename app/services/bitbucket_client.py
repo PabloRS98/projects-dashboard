@@ -22,10 +22,11 @@ import logging
 import httpx
 
 from ..config import settings
-from . import forge_errors
+from . import cuota, forge_errors
 
 logger = logging.getLogger(__name__)
 BASE_URL = "https://api.bitbucket.org/2.0"
+PROVEEDOR = "bitbucket"
 
 # Vocabulario de Bitbucket -> el que usa el resto de la app (el de GitHub).
 # `CI_BAD` de alerts.py y del router espera "failure"/"error"/"cancelled".
@@ -72,9 +73,16 @@ def _estado_del_ultimo_pipeline(client: httpx.Client, owner_repo: str) -> str | 
 
 def get_repo_info(owner_repo: str) -> dict:
     info: dict = {}
+    # Bitbucket limita a 1.000 peticiones/hora y cada consulta gasta cinco, así
+    # que agotarla es fácil. No manda cabeceras de cuota: el corte se apoya en el
+    # 429 que anota `cuota.anotar_error`.
+    if cuota.agotada(PROVEEDOR):
+        info["error"] = cuota.mensaje(PROVEEDOR, "Bitbucket")
+        return info
     try:
         with httpx.Client(auth=_auth(), timeout=10) as client:
             repo = client.get(f"{BASE_URL}/repositories/{owner_repo}")
+            cuota.recordar(PROVEEDOR, repo)
             repo.raise_for_status()
             repo_data = repo.json()
             info["branch"] = (repo_data.get("mainbranch") or {}).get("name")
@@ -106,6 +114,7 @@ def get_repo_info(owner_repo: str) -> dict:
                 info["ci_status"] = estado
     except Exception as exc:  # noqa: BLE001  el mensaje concreto lo pone forge_errors
         logger.warning("Fallo al consultar Bitbucket para %s: %s", owner_repo, exc)
+        cuota.anotar_error(PROVEEDOR, exc)
         info["error"] = forge_errors.describe(
             exc, "Bitbucket", "BITBUCKET_TOKEN", bool(settings.bitbucket_token)
         )
