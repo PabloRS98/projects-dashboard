@@ -151,7 +151,7 @@ formularios.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 203 pruebas
+pytest -q          # 346 pruebas
 ruff check .
 ```
 
