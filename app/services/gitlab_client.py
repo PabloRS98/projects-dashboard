@@ -5,10 +5,11 @@ from urllib.parse import quote
 import httpx
 
 from ..config import settings
-from . import forge_errors
+from . import cuota, forge_errors
 
 logger = logging.getLogger(__name__)
 BASE_URL = "https://gitlab.com/api/v4"
+PROVEEDOR = "gitlab"
 
 
 def _headers() -> dict:
@@ -30,10 +31,17 @@ def _total(response: httpx.Response) -> int | None:
 
 def get_repo_info(owner_repo: str) -> dict:
     info: dict = {}
+    # Corta antes de salir a la red: con REMOTE_WORKERS=5 y 20 proyectos de
+    # GitLab, seguir intentándolo son 100 peticiones fallidas en segundos y todos
+    # los proyectos acaban con el mismo error.
+    if cuota.agotada(PROVEEDOR):
+        info["error"] = cuota.mensaje(PROVEEDOR, "GitLab")
+        return info
     project_id = quote(owner_repo, safe="")
     try:
         with httpx.Client(headers=_headers(), timeout=10) as client:
             repo = client.get(f"{BASE_URL}/projects/{project_id}")
+            cuota.recordar(PROVEEDOR, repo)
             repo.raise_for_status()
             repo_data = repo.json()
             info["stars"] = repo_data.get("star_count")
@@ -74,6 +82,7 @@ def get_repo_info(owner_repo: str) -> dict:
                 info["ci_status"] = pipelines.json()[0].get("status")
     except Exception as exc:  # noqa: BLE001  el mensaje concreto lo pone forge_errors
         logger.warning("Fallo al consultar GitLab para %s: %s", owner_repo, exc)
+        cuota.anotar_error(PROVEEDOR, exc)
         info["error"] = forge_errors.describe(
             exc, "GitLab", "GITLAB_TOKEN", bool(settings.gitlab_token)
         )

@@ -98,6 +98,15 @@ razonamiento completo sin buscarlo.
 
 ### Corrección
 
+- **[PD-M7]** GitLab y Bitbucket también cortan el ciclo cuando se agota la
+  cuota. El mecanismo existía completo en `github_client` y los otros dos no
+  tenían nada: `forge_errors` sabía diagnosticar el 429, pero nadie paraba, así
+  que se seguían gastando peticiones fallidas y todos los proyectos acababan con
+  el mismo error. Se extrae a `cuota.py`, parametrizado por proveedor y con
+  cuenta separada para cada uno, para que GitHub agotado no pare los proyectos de
+  GitLab. Bitbucket no manda cabeceras de cuota, así que su corte se apoya en el
+  429.
+
 - **[PD-M6]**, **[PD-M5]** y **[PD-M4]** Una sola política para los campos que
   el proveedor no da, escrita y aplicada a los cinco: **la clave ausente
   significa "este proveedor no tiene ese dato" y se conserva lo que hubiera; la

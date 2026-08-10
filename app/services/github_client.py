@@ -16,10 +16,11 @@ from datetime import UTC, datetime
 import httpx
 
 from ..config import settings
-from . import forge_errors
+from . import cuota, forge_errors
 
 logger = logging.getLogger(__name__)
 BASE_URL = "https://api.github.com"
+PROVEEDOR = "github"
 
 # Cliente compartido a nivel de módulo. Antes se creaba y destruía uno por
 # proyecto, así que se rehacía el handshake TLS con api.github.com cada vez: con
@@ -79,19 +80,10 @@ def _headers() -> dict:
 
 
 def _remember_rate_limit(response: httpx.Response) -> None:
-    remaining = response.headers.get("X-RateLimit-Remaining")
-    if remaining is None:
-        return
-    reset = response.headers.get("X-RateLimit-Reset")
-    try:
-        rate_limit["remaining"] = int(remaining)
-        rate_limit["limit"] = int(response.headers.get("X-RateLimit-Limit") or 0) or None
-        rate_limit["reset"] = (
-            datetime.fromtimestamp(int(reset), UTC).replace(tzinfo=None) if reset else None
-        )
-        rate_limit["checked_at"] = datetime.now(UTC).replace(tzinfo=None)
-    except (TypeError, ValueError):
-        pass
+    cuota.recordar(PROVEEDOR, response)
+    # `rate_limit` se mantiene como vista del estado compartido: el panel y sus
+    # pruebas lo leen y lo escriben directamente desde antes de [PD-M7].
+    rate_limit.update(cuota.estado(PROVEEDOR))
 
 
 def quota_exhausted() -> bool:
@@ -99,6 +91,9 @@ def quota_exhausted() -> bool:
 
     Permite abortar un ciclo de sincronización entero en cuanto GitHub deja de
     responder, en vez de gastar una petición fallida por proyecto.
+
+    Lee de `rate_limit` y no de `cuota`: sigue habiendo código y pruebas que
+    fijan ese diccionario a mano para simular la cuota agotada.
     """
     if rate_limit["remaining"] is None or rate_limit["remaining"] > 0:
         return False
