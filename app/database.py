@@ -1,10 +1,13 @@
 """Motor y sesión de SQLAlchemy sobre SQLite, con migración ligera de columnas."""
+import logging
 import os
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 os.makedirs(os.path.dirname(settings.db_path) or ".", exist_ok=True)
 
@@ -49,6 +52,27 @@ def ensure_columns(table: str, columns: dict[str, str]) -> list[str]:
     return added
 
 
+def limpiar_tareas_huerfanas() -> int:
+    """Borra las tareas cuyo proyecto ya no existe y devuelve cuántas eran.
+
+    Limpieza de lo que dejó el fallo de [PD-A4]: `add_task` creaba y commiteaba
+    la tarea antes de que nadie comprobara que el proyecto existía, así que
+    bastaban dos pestañas abiertas (borrar el proyecto en una, añadir una tarea
+    en la otra) para dejar filas colgando de un `project_id` inexistente.
+
+    No se limpian solas: la clave foránea de `task_items` no lleva ON DELETE, y
+    SQLite tampoco aplicaría las claves foráneas sin activar el PRAGMA. Y como
+    SQLite reasigna los ids sin AUTOINCREMENT, un proyecto nuevo puede recibir el
+    id de uno borrado y aparecer con las tareas del anterior: por eso se barren
+    en el arranque y no solo se evita el caso nuevo.
+    """
+    with engine.begin() as conn:
+        resultado = conn.exec_driver_sql(
+            "DELETE FROM task_items WHERE project_id NOT IN (SELECT id FROM projects)"
+        )
+        return resultado.rowcount
+
+
 def init_db():
     from . import models  # noqa: F401  asegura que los modelos queden registrados
 
@@ -73,3 +97,6 @@ def init_db():
         # v4: commits por semana (JSON) para el sparkline de actividad
         "commit_weeks": "VARCHAR(255)",
     })
+    huerfanas = limpiar_tareas_huerfanas()
+    if huerfanas:
+        logger.warning("Borradas %d tareas huérfanas (proyecto inexistente)", huerfanas)
