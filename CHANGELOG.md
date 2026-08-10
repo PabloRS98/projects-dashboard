@@ -8,6 +8,17 @@ razonamiento completo sin buscarlo.
 
 ### Rendimiento
 
+- **[PD-M9]** `scan_todos` deja de recorrer el árbol sin límites: se salta los
+  ficheros de más de 1 MB (un bundle minificado va en una sola línea, así que el
+  iterador de líneas lo carga entero en memoria), amplía los directorios
+  ignorados con los de artefactos de otros ecosistemas (`target`, `vendor`,
+  `.next`, `coverage`…), y para al llegar a 20.000 ficheros o 20 segundos
+  marcando el resultado como parcial. Y cuenta **palabras completas**: `TODO`
+  suelto casaba dentro de `TODOS_LOS_USUARIOS`, `METODOS` o `TODO_EXTENSIONS`,
+  hasta el punto de que este propio repositorio se contaba a sí mismo. Medido
+  sobre los repos reales, el recuento de `projects-dashboard` pasa de 46 TODOs a
+  19: los 27 de diferencia eran falsos positivos.
+
 - **[PD-M13]** Sincronizar un proyecto concreto pasa a segundo plano, como ya
   hacía "Sincronizar todo". Era el botón que más se pulsa y el único que dejaba
   el navegador colgado hasta 40 s. La justificación de que fuera síncrono era
