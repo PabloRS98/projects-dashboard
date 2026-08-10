@@ -7,9 +7,9 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .database import init_db
+from .database import SessionLocal, init_db
 from .routers import projects
-from .security import CSRFMiddleware
+from .security import CSRFMiddleware, avisar_rutas_fuera_de_la_base
 from .services import github_client
 from .services.scheduler import start_scheduler
 
@@ -22,6 +22,13 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Avisa (no borra) de las rutas locales guardadas que quedarían fuera de la
+    # base tras [PD-M10]. Vaciarlas en silencio sería peor que el problema.
+    db = SessionLocal()
+    try:
+        avisar_rutas_fuera_de_la_base(db)
+    finally:
+        db.close()
     app.state.scheduler = start_scheduler()
     yield
     app.state.scheduler.shutdown(wait=False)

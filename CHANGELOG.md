@@ -166,6 +166,17 @@ razonamiento completo sin buscarlo.
 
 ### Seguridad
 
+- **[PD-M10]**, **[PD-M11]** y **[PD-M12]** Se valida en el servidor lo que
+  llega por formulario, que hasta ahora se fiaba de la validación del HTML.
+  `local_path` queda restringido a `LOCAL_REPOS_BASE_PATH`: acaba en `os.walk` y
+  en la lectura del README, así que con `/` la app recorría y enseñaba ficheros
+  de todo el contenedor. Las rutas ya guardadas que queden fuera **se avisan por
+  log, no se borran**. `remote_provider` se valida contra los tres soportados,
+  para que un POST directo no deje basura en la base contaminando el filtro "con
+  error de sync". Y un nombre en blanco deja de crear proyectos sin nombre, que
+  salían con un enlace vacío imposible de pulsar y primeros en el orden
+  alfabético.
+
 - **[PD-A7]** Cabeceras de seguridad HTTP: `Content-Security-Policy`,
   `X-Content-Type-Options` y `Referrer-Policy`. La app renderiza HTML generado
   desde el Markdown de repositorios de terceros, y el saneado por lista blanca

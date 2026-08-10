@@ -5,11 +5,23 @@ El modelo de amenaza es una app mono-usuario que puede quedar expuesta en LAN o
 VPN. No hay multi-tenencia, así que no hay control de acceso por recurso; lo que
 sí hay que cubrir es que un sitio de terceros no pueda dirigir el navegador del
 usuario contra esta app (CSRF) ni usarla como trampolín (open redirect).
+
+A eso se añade que la app **lee ficheros del disco a partir de una ruta que llega
+por formulario** (`local_path`). El usuario legítimo ya tiene acceso al host, así
+que por sí solo no es un problema; lo es en combinación con un XSS, que permitiría
+hacer un POST autenticado apuntando la ruta a `/` y leer después el resultado. Por
+eso `ruta_local_valida` acota la ruta a la carpeta escaneada.
 """
+import logging
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
+
+from .config import settings
+
+logger = logging.getLogger(__name__)
 
 # Métodos que no cambian estado: se dejan pasar sin comprobar origen.
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -36,6 +48,54 @@ def safe_redirect_path(url: str | None, fallback: str = "/") -> str:
     if not path.startswith("/") or path.startswith("//"):
         return fallback
     return path
+
+
+def ruta_local_valida(ruta: str | None) -> str | None:
+    """Devuelve la ruta solo si cuelga de `LOCAL_REPOS_BASE_PATH`; si no, None.
+
+    `local_path` llega por formulario y acaba en tres sitios: `git -C` (que va
+    con argumentos como lista, así que ahí no hay inyección), `os.walk` en
+    `scan_todos` —que **lee** todos los ficheros con extensión conocida bajo esa
+    ruta— y `read_readme`, que **muestra** el primero que empiece por "readme".
+    Con `local_path = /` la app recorría y enseñaba ficheros de todo el
+    contenedor.
+
+    Restringirlo no quita funcionalidad: el descubrimiento automático solo
+    encuentra repos bajo esa base, así que una ruta de fuera no llegaría a
+    sincronizarse de todos modos.
+    """
+    if not ruta:
+        return None
+    try:
+        base = Path(settings.local_repos_base_path).resolve()
+        candidata = Path(ruta).resolve()
+    except (OSError, ValueError):
+        return None
+    if candidata == base or base in candidata.parents:
+        return str(candidata)
+    return None
+
+
+def avisar_rutas_fuera_de_la_base(db) -> int:
+    """Registra los proyectos cuya ruta guardada quedaría fuera de la base.
+
+    Avisa, no borra. Si alguien tenía un proyecto apuntando fuera de
+    `LOCAL_REPOS_BASE_PATH` —o si esa variable cambia— vaciarle el campo en
+    silencio sería peor que el problema que arregla `ruta_local_valida`.
+    """
+    from .models import Project
+
+    fuera = [
+        p for p in db.query(Project).filter(Project.local_path.isnot(None)).all()
+        if p.local_path and ruta_local_valida(p.local_path) is None
+    ]
+    for p in fuera:
+        logger.warning(
+            'El proyecto "%s" tiene una ruta local fuera de %s: %s. '
+            "Se conserva, pero al editarlo se descartará.",
+            p.name, settings.local_repos_base_path, p.local_path,
+        )
+    return len(fuera)
 
 
 def safe_external_url(url: str | None) -> str | None:
