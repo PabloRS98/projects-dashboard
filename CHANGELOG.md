@@ -24,6 +24,18 @@ razonamiento completo sin buscarlo.
 
 ### Rendimiento
 
+- **[PD-M8]** y **[PD-M14]** El cliente HTTP de GitHub se crea una sola vez y se
+  reutiliza: antes se construía y destruía uno por proyecto, así que se rehacía
+  el handshake TLS con `api.github.com` cada vez. Se invalida solo si cambia el
+  token, para que una configuración recargada en caliente no siga autenticando
+  con el viejo. Y `refresh_remote_activity` pasa a hacer las peticiones en
+  paralelo con el mismo patrón que `sync_all_remote`: era una por proyecto en
+  serie con 10 s de timeout, así que con 40 repos importados podían ser siete
+  minutos dentro del job de las 4:30. Además reintenta una vez cuando GitHub
+  responde 202 (aún calculando las estadísticas): la "siguiente pasada" era el
+  job de mañana, así que un repo recién importado tardaba días en enseñar su
+  actividad. Commit por proyecto, para que un fallo a mitad no tire lo hecho.
+
 - **[PD-M3]** Un solo `<dialog>` de edición para toda la lista, con el
   formulario cargado por HTMX al abrirlo. Se renderizaba uno completo por
   proyecto: con 30 proyectos, el HTML de `/lista` pasa de 335 KB a **265 KB** y

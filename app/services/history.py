@@ -10,6 +10,8 @@ clon local del que sacarla con `git log`.
 """
 import json
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
 from sqlalchemy import delete
@@ -23,6 +25,14 @@ logger = logging.getLogger(__name__)
 # Un año de histórico: suficiente para ver tendencia anual y sigue siendo
 # despreciable en disco (unas 400 filas por proyecto).
 KEEP_DAYS = 400
+
+# Peticiones simultáneas al pedir la actividad. El mismo número que
+# `scheduler.REMOTE_WORKERS` y por el mismo motivo: el cuello de botella es la
+# cuota del forge, no la CPU.
+ACTIVIDAD_WORKERS = 5
+
+# Segundos antes de reintentar cuando GitHub responde 202 (aún calculando).
+ESPERA_REINTENTO = 4.0
 
 
 def _commits_last_7d(project: Project) -> int | None:
@@ -65,12 +75,40 @@ def take_snapshot(db: Session, day: date | None = None) -> int:
     return touched
 
 
+def _actividad_con_reintento(owner_repo: str) -> list[int] | None:
+    """Pide la actividad y reintenta una vez si GitHub aún la está calculando.
+
+    `/stats/participation` devuelve 202 con cuerpo vacío mientras calcula, y
+    `get_commit_weeks` devuelve None en ese caso para no guardar una serie de
+    ceros. Pero la "siguiente pasada" es el job de mañana: para un repo recién
+    importado eso significaba días sin actividad en la tarjeta. GitHub suele
+    tener las estadísticas listas unos segundos después de la primera solicitud,
+    que es justo lo que las dispara.
+
+    Un solo reintento: si sigue calculando, se deja para mañana de verdad.
+    """
+    weeks = github_client.get_commit_weeks(owner_repo)
+    if weeks is not None:
+        return weeks
+    time.sleep(ESPERA_REINTENTO)
+    return github_client.get_commit_weeks(owner_repo)
+
+
 def refresh_remote_activity(db: Session) -> int:
     """Rellena `commit_weeks` de los proyectos solo-remoto desde la API del forge.
 
     Solo GitHub y solo una vez al día: el endpoint de estadísticas es caro y se
     calcula en diferido, así que no tiene sentido pedirlo en cada ciclo de sync.
     Los proyectos con clon local ya lo tienen de `git log`, que es gratis.
+
+    En paralelo con el mismo patrón que `scheduler.sync_all_remote`: eran una
+    petición por proyecto en serie con 10 s de timeout, así que con 40 repos
+    importados —lo que `AUTO_IMPORT_GITHUB=true` hace probable— podían ser
+    siete minutos dentro del job de las 4:30.
+
+    Solo los hilos hacen red; la escritura en la base se hace después, desde el
+    hilo que ya tiene la sesión, para no repartir una `Session` de SQLAlchemy
+    entre varios hilos.
     """
     projects = (
         db.query(Project)
@@ -81,14 +119,29 @@ def refresh_remote_activity(db: Session) -> int:
         )
         .all()
     )
+    if not projects:
+        return 0
+
     actualizados = 0
-    for project in projects:
-        weeks = github_client.get_commit_weeks(project.remote_repo)
-        if weeks is None:
-            continue
-        project.commit_weeks = json.dumps(weeks)
-        actualizados += 1
-    db.commit()
+    with ThreadPoolExecutor(max_workers=ACTIVIDAD_WORKERS) as pool:
+        pendientes = {
+            pool.submit(_actividad_con_reintento, p.remote_repo): p for p in projects
+        }
+        for futuro in as_completed(pendientes):
+            project = pendientes[futuro]
+            try:
+                weeks = futuro.result()
+            except Exception:  # noqa: BLE001  un repo que falla no tumba el job
+                logger.warning("Fallo al pedir la actividad de %s", project.remote_repo)
+                continue
+            if weeks is None:
+                continue
+            project.commit_weeks = json.dumps(weeks)
+            # Commit por proyecto: con uno solo al final, un fallo a mitad tiraba
+            # las peticiones ya hechas y había que repetirlas mañana.
+            db.commit()
+            actualizados += 1
+
     if actualizados:
         logger.info("Actividad remota actualizada: %d proyectos", actualizados)
     return actualizados

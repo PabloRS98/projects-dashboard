@@ -10,6 +10,7 @@ from .config import settings
 from .database import init_db
 from .routers import projects
 from .security import CSRFMiddleware
+from .services import github_client
 from .services.scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +25,9 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = start_scheduler()
     yield
     app.state.scheduler.shutdown(wait=False)
+    # El cliente de GitHub es compartido y vive en el módulo: se cierra aquí
+    # para no dejar el pool de conexiones abierto al apagar.
+    github_client.cerrar_cliente()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
