@@ -9,6 +9,26 @@ services:
       - "127.0.0.1:${HOST_PORT:-8003}:8000"
     env_file:
       - .env
+    # Endurecido. La app solo escribe en /data (base y backups) y git necesita un
+    # /tmp donde trabajar, así que el resto del sistema de ficheros va en solo
+    # lectura.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Las cuatro que quedan son las que necesita el entrypoint para bajar
+    # privilegios, y solo durante el arranque: CHOWN y FOWNER para ajustar la
+    # propiedad de /data (que puede venir de un despliegue anterior con ficheros
+    # de root), SETUID y SETGID para el `setpriv`. Una vez que el proceso corre
+    # como `app`, no-new-privileges impide recuperarlas.
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - SETUID
+      - SETGID
     volumes:
       # Base de datos y backups (persistente)
       - ./data:/data
