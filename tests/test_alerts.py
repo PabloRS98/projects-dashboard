@@ -21,6 +21,20 @@ def enviados(monkeypatch):
     return mensajes
 
 
+@pytest.fixture
+def envios_fallidos(monkeypatch):
+    """Telegram configurado pero con todos los envíos fallando.
+
+    Es lo que pasa de verdad cuando el mensaje lleva HTML inválido: Telegram
+    responde `400 Bad Request: can't parse entities` y `send_message` devuelve
+    False.
+    """
+    intentos: list[str] = []
+    monkeypatch.setattr(telegram, "is_configured", lambda: True)
+    monkeypatch.setattr(telegram, "send_message", lambda texto: intentos.append(texto) and False)
+    return intentos
+
+
 def _viejo(dias: int):
     return utcnow() - timedelta(days=dias)
 
@@ -132,3 +146,90 @@ def test_resumen_diario_resume_el_estado(db, enviados):
 def test_resumen_diario_no_se_envia_sin_proyectos(db, enviados):
     assert alerts.daily_summary(db) is False
     assert enviados == []
+
+
+# --------------------------------------------------------------------------
+# Escapado del HTML: los mensajes van con parse_mode HTML. Ver [PD-A6].
+# --------------------------------------------------------------------------
+
+def test_el_aviso_de_ci_escapa_el_nombre_del_proyecto(db, enviados):
+    """`&` en el nombre es válido en GitHub y en una carpeta local, y rompe el
+    parse_mode HTML de Telegram."""
+    db.add(Project(name="foo&bar", ci_status="failure"))
+    db.commit()
+
+    alerts.check_alerts(db)
+    assert "foo&amp;bar" in enviados[0]
+
+
+def test_un_estado_de_ci_desconocido_no_dispara_aviso(db, enviados):
+    """`ci_status` se escapa igual que el nombre, pero por esta vía no puede
+    colarse HTML: el aviso solo salta si el valor está en el conjunto cerrado
+    `CI_BAD`, que lo llenan los clientes de forge. El escapado está por si un
+    proveedor nuevo devolviera texto libre."""
+    db.add(Project(name="x", ci_status="<b>failure"))
+    db.commit()
+
+    assert alerts.check_alerts(db) == 0
+    assert enviados == []
+
+
+def test_el_aviso_de_pr_estancado_escapa_el_nombre(db, enviados):
+    db.add(Project(name="a<b>c", oldest_open_pr_days=30))
+    db.commit()
+
+    alerts.check_alerts(db)
+    assert "a&lt;b&gt;c" in enviados[0]
+
+
+def test_el_aviso_de_parado_escapa_el_nombre(db, enviados):
+    db.add(Project(name="dormido & co", last_commit_date=_viejo(90)))
+    db.commit()
+
+    alerts.check_alerts(db)
+    assert "dormido &amp; co" in enviados[0]
+
+
+def test_el_resumen_diario_escapa_los_nombres(db, enviados):
+    db.add(Project(name="R&D", last_commit_date=_viejo(90)))
+    db.commit()
+
+    alerts.daily_summary(db)
+    assert "R&amp;D" in enviados[-1]
+
+
+# --------------------------------------------------------------------------
+# El flag de dedup solo se marca si el envío funcionó. Ver [PD-A6].
+# --------------------------------------------------------------------------
+
+def test_el_flag_de_ci_no_se_marca_si_el_envio_falla(db, envios_fallidos):
+    """Marcarlo igualmente dejaba el aviso silenciado hasta que la condición se
+    rearmara: un proyecto podía no avisar nunca de su CI en rojo."""
+    p = Project(name="roto", ci_status="failure")
+    db.add(p)
+    db.commit()
+
+    assert alerts.check_alerts(db) == 0
+    assert p.ci_notified is False
+
+    # Siguiente ciclo: tiene que reintentarlo.
+    alerts.check_alerts(db)
+    assert len(envios_fallidos) == 2
+
+
+def test_el_flag_de_pr_estancado_no_se_marca_si_el_envio_falla(db, envios_fallidos):
+    p = Project(name="conpr", oldest_open_pr_days=30)
+    db.add(p)
+    db.commit()
+
+    alerts.check_alerts(db)
+    assert p.pr_stale_notified is False
+
+
+def test_el_flag_de_parado_no_se_marca_si_el_envio_falla(db, envios_fallidos):
+    p = Project(name="dormido", last_commit_date=_viejo(90))
+    db.add(p)
+    db.commit()
+
+    alerts.check_alerts(db)
+    assert p.stale_notified is False

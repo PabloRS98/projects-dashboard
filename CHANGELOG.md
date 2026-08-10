@@ -8,6 +8,16 @@ razonamiento completo sin buscarlo.
 
 ### Corrección
 
+- **[PD-A6]** Los avisos de Telegram escapan el nombre del proyecto, y el flag
+  de deduplicación solo se marca si el envío funcionó. Los mensajes van con
+  `parse_mode: "HTML"` y el nombre se interpolaba crudo: un repositorio llamado
+  `foo&bar` —válido en GitHub, y el nombre puede venir también de la carpeta en
+  disco— hacía que Telegram respondiera `400 can't parse entities`. El fallo era
+  silencioso y, como el flag se marcaba fuera del `if`, ese proyecto no volvía a
+  avisar de su CI en rojo hasta que la condición se rearmara. Además, el token
+  del bot dejaba de aparecer en los logs: iba en la ruta de la URL y
+  `logger.exception` volcaba el traceback entero.
+
 - **[PD-A4]** `add_task` comprueba que el proyecto existe antes de crear la
   tarea. La comprobación vivía en `_tasks_fragment`, que corre al final, así que
   la fila ya estaba creada y commiteada colgando de un `project_id` inexistente.

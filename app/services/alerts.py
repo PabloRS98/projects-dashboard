@@ -34,11 +34,20 @@ def check_alerts(db: Session) -> int:
 
     sent = 0
     for p in db.query(Project).all():
+        # Los mensajes van con parse_mode HTML, así que todo dato que se
+        # interpole se escapa: un nombre con "&" (válido en GitHub y en una
+        # carpeta local) hacía que Telegram respondiera 400 y el aviso se
+        # perdiera. Y el flag solo se marca si el envío funcionó: marcarlo igual
+        # dejaba el aviso silenciado hasta que la condición se rearmara, o sea
+        # que ese proyecto no avisaba nunca.
+        nombre = telegram.esc(p.name)
+
         # CI en rojo
         if p.ci_status in CI_BAD:
-            if not p.ci_notified:
-                if telegram.send_message("🔴 <b>%s</b> — CI en rojo (%s)" % (p.name, p.ci_status)):
-                    sent += 1
+            if not p.ci_notified and telegram.send_message(
+                "🔴 <b>%s</b> — CI en rojo (%s)" % (nombre, telegram.esc(p.ci_status))
+            ):
+                sent += 1
                 p.ci_notified = True
         elif p.ci_status in CI_GOOD:
             p.ci_notified = False
@@ -46,19 +55,20 @@ def check_alerts(db: Session) -> int:
         # PR estancado
         oldest = p.oldest_open_pr_days
         if oldest is not None and oldest > settings.stale_pr_days:
-            if not p.pr_stale_notified:
-                if telegram.send_message("⏳ <b>%s</b> — PR abierto desde hace %d días" % (p.name, oldest)):
-                    sent += 1
+            if not p.pr_stale_notified and telegram.send_message(
+                "⏳ <b>%s</b> — PR abierto desde hace %d días" % (nombre, oldest)
+            ):
+                sent += 1
                 p.pr_stale_notified = True
         else:
             p.pr_stale_notified = False
 
         # Proyecto parado
         if _is_stale(p):
-            if not p.stale_notified:
-                dias = p.days_since_commit()
-                if telegram.send_message("🌙 <b>%s</b> — parado: %d días sin commits" % (p.name, dias)):
-                    sent += 1
+            if not p.stale_notified and telegram.send_message(
+                "🌙 <b>%s</b> — parado: %d días sin commits" % (nombre, p.days_since_commit())
+            ):
+                sent += 1
                 p.stale_notified = True
         else:
             p.stale_notified = False
@@ -88,7 +98,8 @@ def daily_summary(db: Session) -> bool:
         "%d proyectos · %d PRs abiertos · %d con cambios sin commitear" % (len(projects), prs, cambios),
     ]
     if parados:
-        lines.append("🌙 Parados (%d): %s" % (len(parados), ", ".join(p.name for p in parados[:10])))
+        nombres = ", ".join(telegram.esc(p.name) for p in parados[:10])
+        lines.append("🌙 Parados (%d): %s" % (len(parados), nombres))
     if errores:
         lines.append("⚠️ %d con error de sincronización" % errores)
     return telegram.send_message("\n".join(lines))
