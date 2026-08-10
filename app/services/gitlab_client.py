@@ -39,7 +39,14 @@ def get_repo_info(owner_repo: str) -> dict:
             info["stars"] = repo_data.get("star_count")
             info["branch"] = repo_data.get("default_branch")
             info["description"] = repo_data.get("description") or None
-            info["homepage"] = repo_data.get("web_url") or None
+            # Sin "homepage" a propósito. Aquí se guardaba `web_url`, que es la
+            # URL del propio repositorio en GitLab, no la web publicada del
+            # proyecto: la tarjeta acababa con dos enlaces al mismo sitio, uno
+            # etiquetado "web". La API de /projects/:id no expone nada
+            # equivalente al `homepage` de GitHub, así que lo honesto es no dar
+            # el dato y dejar que lo ponga el usuario. (GitLab Pages sí sería una
+            # web de verdad, pero está en /projects/:id/pages y pide permisos
+            # extra; no compensa por ahora.)
 
             commits = client.get(
                 f"{BASE_URL}/projects/{project_id}/repository/commits", params={"per_page": 1}

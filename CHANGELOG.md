@@ -89,6 +89,20 @@ razonamiento completo sin buscarlo.
 
 ### Corrección
 
+- **[PD-M6]**, **[PD-M5]** y **[PD-M4]** Una sola política para los campos que
+  el proveedor no da, escrita y aplicada a los cinco: **la clave ausente
+  significa "este proveedor no tiene ese dato" y se conserva lo que hubiera; la
+  clave presente se escribe aunque valga 0 o `None`.** Antes había dos políticas
+  distintas en el mismo bloque y ninguna documentada, así que un proyecto
+  migrado de GitHub a Bitbucket perdía sus estrellas en el primer sync. GitHub
+  pasa a decir explícitamente que no quedan PRs abiertos, para que el aviso de
+  PR estancado se apague al cerrarse el último. GitLab deja de guardar la URL
+  del repositorio como si fuera la web del proyecto —la tarjeta pintaba dos
+  enlaces al mismo sitio, uno etiquetado "web"— y el valor incorrecto que ya
+  estuviera guardado se limpia solo. Y un proyecto solo-remoto trae su actividad
+  semanal en el primer sync, en vez de salir sin sparkline hasta las 4:30 del día
+  siguiente.
+
 - **[PD-A5]** `BACKUP_KEEP=0` vuelve a significar lo que dice. `existing[:-0]`
   es `existing[:0]` —lista vacía—, no "todos", así que configurarlo a 0 no
   borraba ningún backup: exactamente lo contrario de la intención, y el disco
