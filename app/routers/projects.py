@@ -10,7 +10,7 @@ from ..config import settings
 from ..database import SessionLocal, get_db
 from ..flash import redirect_flash
 from ..models import Project, TaskItem
-from ..security import safe_external_url
+from ..security import ruta_local_valida, safe_external_url
 from ..services import (
     capacidades,
     github_client,
@@ -20,7 +20,7 @@ from ..services import (
     scheduler,
     telegram,
 )
-from ..services.sync import normalize_remote_repo, sync_project
+from ..services.sync import REMOTE_CLIENTS, normalize_remote_repo, sync_project
 from ..templating import templates
 
 router = APIRouter(tags=["proyectos"], dependencies=[Depends(verify_auth)])
@@ -68,6 +68,18 @@ def _is_stale(p: Project, stale_days: int) -> bool:
     """Proyecto 'parado': no archivado y con el último commit hace más de stale_days."""
     d = p.days_since_commit()
     return not p.is_archived and d is not None and d > stale_days
+
+
+def _proveedor_valido(raw: str) -> str | None:
+    """El proveedor solo puede ser uno de los soportados.
+
+    El `<select>` de la plantilla ofrece los tres, pero eso es del lado del
+    cliente: un POST directo guardaba cualquier cosa, y el valor basura se
+    quedaba en la base para siempre contaminando el filtro "con error de sync".
+    `REMOTE_CLIENTS` es la lista canónica.
+    """
+    provider = (raw or "").strip().lower()
+    return provider if provider in REMOTE_CLIENTS else None
 
 
 def _clean_tags(raw: str) -> str:
@@ -423,10 +435,13 @@ def create_project(
     homepage_url: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    name = name.strip()
+    if not name:
+        return redirect_flash("/", "Ponle un nombre al proyecto", "error")
     project = Project(
-        name=name.strip(),
-        local_path=local_path.strip() or None,
-        remote_provider=remote_provider or None,
+        name=name,
+        local_path=ruta_local_valida(local_path),
+        remote_provider=_proveedor_valido(remote_provider),
         remote_repo=normalize_remote_repo(remote_repo),
         tags=_clean_tags(tags),
         description=description.strip() or None,
@@ -456,9 +471,13 @@ def edit_project(
     project = db.get(Project, project_id)
     if not project:
         return redirect_flash("/", "El proyecto ya no existe", "error")
-    project.name = name.strip()
-    project.local_path = local_path.strip() or None
-    project.remote_provider = remote_provider or None
+    name = name.strip()
+    if not name:
+        referer = request.headers.get("referer") or "/"
+        return redirect_flash(referer, "Ponle un nombre al proyecto", "error")
+    project.name = name
+    project.local_path = ruta_local_valida(local_path)
+    project.remote_provider = _proveedor_valido(remote_provider)
     project.remote_repo = normalize_remote_repo(remote_repo)
     project.tags = _clean_tags(tags)
     project.description = description.strip() or None
