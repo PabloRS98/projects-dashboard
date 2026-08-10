@@ -176,8 +176,60 @@ def sync_local(project: Project) -> None:
         project.todo_scanned_sha = sha
 
 
+# Métricas que llegan de la API del forge.
+#
+# Política, elegida y aplicada a las cinco por igual: **la clave ausente
+# significa "el proveedor no da este dato", y entonces se conserva lo que
+# hubiera; la clave presente se escribe, aunque valga 0 o None.**
+#
+# Antes había dos políticas distintas en el mismo bloque y ninguna escrita:
+# `ci_status` conservaba el valor anterior y los otros cuatro lo ponían a None.
+# La elegida es la de `ci_status` porque los tres proveedores no ofrecen lo
+# mismo: Bitbucket no da estrellas y GitLab no da actividad semanal. Un
+# proveedor que no soporta un campo no está diciendo "cero", no está diciendo
+# nada, y pisar el dato con None borraba información real — un proyecto migrado
+# de GitHub a Bitbucket perdía sus estrellas en el primer sync.
+#
+# El matiz importante es que la clave presente SÍ se escribe aunque valga 0 o
+# None: eso sí es información. Si se cierran todos los PRs, `open_prs` baja a 0 y
+# `oldest_open_pr_days` a None, y el aviso de PR estancado se apaga. Para que
+# funcione, cada cliente tiene que distinguir "no lo sé" de "no hay".
+CAMPOS_REMOTOS = ("stars", "open_issues", "open_prs", "oldest_open_pr_days", "ci_status")
+
+
+def _aplicar_metricas(project: Project, remote_info: dict) -> None:
+    for campo in CAMPOS_REMOTOS:
+        if campo in remote_info:
+            setattr(project, campo, remote_info[campo])
+
+
+def _asegurar_actividad_remota(project: Project) -> None:
+    """Trae la actividad semanal de un proyecto solo-remoto la primera vez.
+
+    Sin esto, un repo dado de alta desde GitHub aparecía sin sparkline hasta el
+    refresco diario de las 4:30: el usuario veía una tarjeta a medias sin saber
+    por qué. Se pide **solo si `commit_weeks` está vacío**, porque
+    `/stats/participation` es caro y se calcula en diferido; de mantenerlo al día
+    ya se encarga `history.refresh_remote_activity`.
+
+    Solo GitHub: ni GitLab ni Bitbucket tienen un equivalente. Y solo sin clon
+    local, porque con él la actividad sale de `git log`, que es gratis.
+    """
+    if project.local_path or project.commit_weeks:
+        return
+    if project.remote_provider != "github":
+        return
+    weeks = github_client.get_commit_weeks(project.remote_repo)
+    if weeks:
+        project.commit_weeks = json.dumps(weeks)
+
+
 def sync_remote(project: Project) -> None:
-    """Actualiza stars, issues/PRs, CI, descripción y web desde la API del proveedor."""
+    """Actualiza stars, issues/PRs, CI, descripción y web desde la API del proveedor.
+
+    Las métricas siguen la política de `CAMPOS_REMOTOS`: lo que el proveedor no
+    manda no se toca.
+    """
     project.remote_error = None
     if not (project.remote_provider and project.remote_repo):
         return
@@ -199,20 +251,22 @@ def sync_remote(project: Project) -> None:
         project.remote_error = remote_info["error"]
         return
 
-    project.stars = remote_info.get("stars")
-    project.open_issues = remote_info.get("open_issues")
-    project.open_prs = remote_info.get("open_prs")
-    project.oldest_open_pr_days = remote_info.get("oldest_open_pr_days")
-    if remote_info.get("ci_status"):
-        project.ci_status = remote_info.get("ci_status")
+    _aplicar_metricas(project, remote_info)
 
     # Escaparate: autorrellenar descripción y web SOLO si están vacías (los edita el usuario)
     if not project.description and remote_info.get("description"):
         project.description = remote_info["description"]
+    # GitLab guardaba la URL del propio repositorio como si fuera la web del
+    # proyecto, y como la web solo se rellena si está vacía, el valor malo se
+    # quedaba para siempre salvo edición manual. Se limpia al detectarlo.
+    if project.homepage_url and project.homepage_url.rstrip("/") == (project.repo_url or "").rstrip("/"):
+        project.homepage_url = None
     if not project.homepage_url:
         # La homepage viene de la API remota y acaba en un href, así que se
         # valida el esquema igual que si la hubiera escrito el usuario.
         project.homepage_url = safe_external_url(remote_info.get("homepage"))
+
+    _asegurar_actividad_remota(project)
 
     # Si no hay copia local, usamos los datos de commit/rama del remoto
     if not project.local_path:

@@ -162,8 +162,13 @@ def get_repo_info(owner_repo: str) -> dict:
             pull_list = pulls.json()
             count = _count_from_link_header(pulls)
             info["open_prs"] = count if count is not None else len(pull_list)
-            if pull_list:
-                info["oldest_open_pr_days"] = _days_since(pull_list[0].get("created_at"))
+            # Se fija siempre, incluso a None: la política de `sync.CAMPOS_REMOTOS`
+            # conserva el valor anterior cuando falta la clave, así que omitirla
+            # al cerrarse el último PR dejaría el proyecto marcado como
+            # "PR estancado" para siempre.
+            info["oldest_open_pr_days"] = (
+                _days_since(pull_list[0].get("created_at")) if pull_list else None
+            )
 
         total_open = repo_data.get("open_issues_count") or 0
         info["open_issues"] = max(total_open - (info.get("open_prs") or 0), 0)
