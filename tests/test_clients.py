@@ -119,9 +119,24 @@ def test_cuota_repuesta_deja_de_bloquear():
 # get_repo_info con la API simulada
 # --------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def sin_cliente_compartido():
+    """Descarta el cliente compartido de github_client antes y después.
+
+    Desde [PD-M8] el cliente se crea una vez y se guarda en el módulo, así que
+    sin esto un cliente real creado por otra prueba sobreviviría al parche de
+    `httpx.Client` y las peticiones simuladas saldrían de verdad a la red.
+    """
+    github_client.cerrar_cliente()
+    yield
+    github_client.cerrar_cliente()
+
+
 def _mock_github(monkeypatch, rutas: dict, status_por_ruta: dict | None = None):
     """Sustituye httpx.Client por uno que responde desde un diccionario de rutas."""
     status_por_ruta = status_por_ruta or {}
+    # El cliente compartido puede estar ya creado con el transporte real.
+    github_client.cerrar_cliente()
 
     def handler(request: httpx.Request) -> httpx.Response:
         for ruta, cuerpo in rutas.items():
