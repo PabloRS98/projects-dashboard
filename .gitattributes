@@ -1,0 +1,13 @@
+# Los scripts de shell van SIEMPRE con finales de línea LF, incluso en la copia
+# de trabajo en Windows.
+#
+# Sin esto, un clon en Windows con `core.autocrlf=true` deja
+# `docker-entrypoint.sh` con CRLF, y `docker build` lo copia tal cual a la
+# imagen: el kernel lee el shebang como "/bin/sh\r", no encuentra ese
+# intérprete y el contenedor muere al arrancar con un "no such file or
+# directory" que no menciona el retorno de carro por ninguna parte.
+*.sh text eol=lf
+
+# Por el mismo motivo, aunque Docker es más tolerante con estos.
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
