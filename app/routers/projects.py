@@ -409,16 +409,31 @@ def sync_all(background: BackgroundTasks, db: Session = Depends(get_db)):
 
 
 @router.post("/{project_id}/sincronizar")
-def sync_one(request: Request, project_id: int, db: Session = Depends(get_db)):
+def sync_one(
+    request: Request,
+    background: BackgroundTasks,
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """Sincroniza un proyecto, en segundo plano como "Sincronizar todo".
+
+    Antes era síncrono, y la razón era buena: devolvía el error concreto en el
+    flash. Pero dejaba el navegador colgado hasta 40 s (cuatro peticiones HTTP
+    con 10 s de timeout), y era el botón que más se pulsa — así que sincronizar
+    *todos* los proyectos respondía al instante y sincronizar *uno* no, que es
+    justo al revés de lo esperable.
+
+    El flash no hacía falta para enterarse: `sync_local` y `sync_remote` guardan
+    `local_error` y `remote_error` en el propio proyecto, y la tarjeta los pinta
+    (`_card.html`). El error se ve igual en la siguiente carga.
+    """
     project = db.get(Project, project_id)
     if not project:
         return redirect_flash("/", "El proyecto ya no existe", "error")
-    sync_project(project)
-    db.commit()
+    nombre = project.name
+    background.add_task(_sync_in_background, project_id)
     referer = request.headers.get("referer") or "/"
-    if project.sync_error:
-        return redirect_flash(referer, '"%s": %s' % (project.name, project.sync_error), "error")
-    return redirect_flash(referer, '"%s" sincronizado' % project.name)
+    return redirect_flash(referer, 'Sincronizando "%s"…' % nombre, "info")
 
 
 @router.post("/{project_id}/notas")

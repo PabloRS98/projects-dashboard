@@ -8,6 +8,12 @@ razonamiento completo sin buscarlo.
 
 ### Rendimiento
 
+- **[PD-M13]** Sincronizar un proyecto concreto pasa a segundo plano, como ya
+  hacía "Sincronizar todo". Era el botón que más se pulsa y el único que dejaba
+  el navegador colgado hasta 40 s. La justificación de que fuera síncrono era
+  devolver el error concreto en el flash, pero no hace falta: `sync_local` y
+  `sync_remote` ya persisten el error en el proyecto y la tarjeta lo pinta.
+
 - **[PD-A3]** y **[PD-M17]** El descubrimiento sale de la petición y deja de
   duplicar el trabajo de los ciclos de sincronización. `/escanear` era la
   operación más cara de la app —recorrido del disco, `git` por repo, conteo de
