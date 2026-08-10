@@ -3,7 +3,7 @@ filtros combinables, orden, resumen agregado, panel de estado, sincronización y
 checklist de tareas."""
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query, Request, Response
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..auth import verify_auth
 from ..config import settings
@@ -73,19 +73,40 @@ def _clean_tags(raw: str) -> str:
 
 
 def _summary(projects: list[Project], stale_days: int, stale_pr_days: int) -> dict:
-    return {
-        "total": len(projects),
-        "prs": sum(p.open_prs or 0 for p in projects),
-        "issues": sum(p.open_issues or 0 for p in projects),
-        "todos": sum(p.todo_count or 0 for p in projects),
-        "cambios": sum(1 for p in projects if p.has_uncommitted_changes),
-        "errores": sum(1 for p in projects if p.sync_error),
-        "rutas_perdidas": sum(1 for p in projects if p.local_path_missing),
-        "parados": sum(1 for p in projects if _is_stale(p, stale_days)),
-        "ci_rojo": sum(1 for p in projects if p.ci_status in CI_BAD),
-        "prs_estancados": sum(1 for p in projects if (p.oldest_open_pr_days or 0) > stale_pr_days),
-        "estrellas": sum(p.stars or 0 for p in projects),
-    }
+    """Los once contadores del panel, en un solo recorrido.
+
+    Eran once comprensiones independientes, y `_view_context` llama a esto dos
+    veces (el global y el de lo visible): 22 recorridos por petición, más los del
+    buscador cada 300 ms. Con 30 proyectos el tiempo absoluto da igual, pero
+    varios de los predicados no son gratuitos —`sync_error` construye una lista y
+    hace un join, `_is_stale` resta datetimes— y la versión de un bucle se lee
+    igual de bien.
+    """
+    r = dict.fromkeys(
+        ("prs", "issues", "todos", "cambios", "errores", "rutas_perdidas",
+         "parados", "ci_rojo", "prs_estancados", "estrellas"), 0
+    )
+    total = 0
+    for p in projects:
+        total += 1
+        r["prs"] += p.open_prs or 0
+        r["issues"] += p.open_issues or 0
+        r["todos"] += p.todo_count or 0
+        r["estrellas"] += p.stars or 0
+        if p.has_uncommitted_changes:
+            r["cambios"] += 1
+        if p.sync_error:
+            r["errores"] += 1
+        if p.local_path_missing:
+            r["rutas_perdidas"] += 1
+        if _is_stale(p, stale_days):
+            r["parados"] += 1
+        if p.ci_status in CI_BAD:
+            r["ci_rojo"] += 1
+        if (p.oldest_open_pr_days or 0) > stale_pr_days:
+            r["prs_estancados"] += 1
+    r["total"] = total
+    return r
 
 
 def _matches_search(p: Project, needle: str) -> bool:
@@ -100,8 +121,21 @@ def _matches_search(p: Project, needle: str) -> bool:
 
 
 def _select(db: Session, q: str, filtros: list[str], tag: str | None, orden: str):
-    """Aplica búsqueda, filtros combinables, tag y orden. Devuelve (todos, visibles)."""
-    all_projects = db.query(Project).all()
+    """Aplica búsqueda, filtros combinables, tag y orden. Devuelve (todos, visibles).
+
+    El filtrado se hace en Python a propósito, no en SQL: son decenas de
+    proyectos, y los ocho predicados de FILTERS son mucho más legibles como
+    expresiones Python (`lambda p, s: (p.oldest_open_pr_days or 0) > s.stale_pr_days`)
+    que como condiciones de SQLAlchemy. Con 5-50 proyectos la diferencia de
+    tiempo no existe. Revisar si el panel pasa de ~500, que es donde cargar todo
+    en memoria empieza a notarse.
+
+    `selectinload(Project.tasks)` sí hace falta: la relación es lazy y cada
+    tarjeta la toca dos veces (el contador de pendientes y la lista de
+    `_tasks.html`), así que sin esto eran 1 + N consultas por carga — y otras
+    1 + N por cada pulsación en el buscador, que refresca cada 300 ms.
+    """
+    all_projects = db.query(Project).options(selectinload(Project.tasks)).all()
     activos = [f for f in filtros if f in FILTERS]
 
     visible = [p for p in all_projects if _matches_search(p, q)]
