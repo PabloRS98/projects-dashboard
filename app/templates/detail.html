@@ -57,6 +57,15 @@
         {% if p.todo_count is not none %}<span class="tag {{ 'warning' if p.todo_count else '' }}">{{ icon("list-todo", 12) }} {{ p.todo_count }} TODOs</span>{% endif %}
     </div>
 
+    {% if sin_soporte %}
+    {# La ausencia de un dato y el valor cero se pintaban igual. Aquí se dice
+       cuál de las dos cosas es, que es la diferencia entre "este proyecto no
+       tiene estrellas" y "de este proyecto no sabemos las estrellas". #}
+    <p class="hint subtle">{{ icon("info", 13) }}
+        {% for campo in sin_soporte %}{{ campo }}{{ ", " if not loop.last }}{% endfor %}:
+        no lo da {{ proveedor_nombre }}.</p>
+    {% endif %}
+
     {% if p.week_counts() %}
     <div class="activity-block">
         <span class="subtle">{{ icon("chart-column", 13) }} Actividad ({{ p.week_counts()|length }} semanas)</span>

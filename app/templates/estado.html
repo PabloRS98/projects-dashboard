@@ -97,6 +97,32 @@
 {% endif %}
 
 <section class="card">
+    <h3>{{ icon("radar") }} Qué da cada proveedor</h3>
+    <p class="hint">Los tres forges no ofrecen lo mismo. Sin esta tabla, un panel con
+        proyectos de Bitbucket enseñaba "0 CI en rojo" cuando lo que pasaba es que
+        nadie había mirado.</p>
+    <div class="table-wrap">
+        <table class="dense">
+            <thead>
+                <tr><th>Dato</th>
+                {% for prov in capacidades[0].proveedores %}<th class="num">{{ prov.nombre }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for fila in capacidades %}
+                <tr>
+                    <td>{{ fila.label }}</td>
+                    {% for prov in fila.proveedores %}
+                    <td class="num {{ 'positive' if prov.ok else 'subtle' }}">{{ "sí" if prov.ok else "no" }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="card">
     <h3>{{ icon("settings") }} Configuración activa</h3>
     <div class="table-wrap">
         <table class="dense">
