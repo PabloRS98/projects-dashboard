@@ -26,6 +26,54 @@
 {%- endif -%}
 {% endmacro %}
 
+{% macro trend(puntos, width=320, height=64) %}
+{#- Serie diaria del histórico. Polilínea y no barras como `sparkline`: aquí son
+    hasta 90 puntos, y a esa densidad una barra por día queda en un píxel.
+    Sigue siendo SVG a mano por la misma razón que el otro: no compensa cargar
+    una librería de gráficos para dibujar una línea.
+
+    Con menos de dos puntos no se pinta nada: una recta horizontal parecería un
+    dato estable cuando lo que pasa es que no hay histórico todavía. -#}
+{%- if puntos|length > 1 -%}
+{%- set valores = puntos|map(attribute=1)|list -%}
+{%- set alto = valores|max -%}
+{%- set bajo = valores|min -%}
+{%- set rango = (alto - bajo) or 1 -%}
+{%- set paso = width / (puntos|length - 1) -%}
+{%- set coords = [] -%}
+{%- for valor in valores -%}
+{%- set _ = coords.append("%s,%s" % (
+    (loop.index0 * paso)|round(1),
+    (height - 2 - ((valor - bajo) / rango) * (height - 4))|round(1)
+)) -%}
+{%- endfor -%}
+<svg class="trend" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}"
+     preserveAspectRatio="none" role="img"
+     aria-label="Evolución de {{ puntos|length }} días: de {{ valores|first }} a {{ valores|last }}">
+    <polyline class="trend-line" points="{{ coords|join(' ') }}" />
+</svg>
+{%- endif -%}
+{% endmacro %}
+
+{% macro trend_card(t) %}
+{#- Una métrica del histórico: cifra de hoy, cuánto ha cambiado y la línea. -#}
+<div class="card trend-card">
+    <span class="stat-head">{{ icon(t.icon, 15) }} {{ t.label }}</span>
+    <p class="big-number">{{ t.actual if t.actual is not none else "–" }}</p>
+    {% if t.delta is not none and t.delta != 0 %}
+    {#- Baja es bueno en PRs, issues y TODOs; en commits es al revés. Lo dice el
+        propio campo, no el signo. -#}
+    <span class="trend-delta {{ 'positive' if (t.delta < 0) != (t.campo == 'commits_7d') else 'warning' }}">
+        {{ icon("trending-down" if t.delta < 0 else "trending-up", 12) }}
+        {{ "+%d"|format(t.delta) if t.delta > 0 else t.delta }} en {{ t.dias }} días (desde {{ t.primero }})
+    </span>
+    {% elif t.delta == 0 %}
+    <span class="trend-delta subtle">sin cambios en {{ t.dias }} días</span>
+    {% endif %}
+    {{ trend(t.puntos) }}
+</div>
+{% endmacro %}
+
 {% macro estado_badges(p, stale_days, stale_pr_days) %}
 {#- Señales de alerta del proyecto, en el mismo orden siempre para que la vista
     sea escaneable de un vistazo. -#}

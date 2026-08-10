@@ -1,9 +1,31 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_widgets.html" import trend_card %}
 {% block title %}Estado del sistema · Proyectos{% endblock %}
 {% block content %}
 
 <a href="/" class="back-link">{{ icon("chevron-left", 15) }} Volver al dashboard</a>
+
+<section>
+    <h3>{{ icon("chart-column") }} Tendencias</h3>
+    <p class="hint">El panel dice cómo está todo ahora; esto dice hacia dónde va.
+        3 PRs abiertos significan algo muy distinto si ayer había 1 o si había 10.</p>
+    {# |list y no |first: con StrictUndefined, `|first` sobre una secuencia vacía
+       lanza en vez de devolver algo falsy, que es exactamente el caso normal
+       mientras no haya histórico. #}
+    {% set con_datos = tendencias|selectattr("puntos")|list %}
+    {% if con_datos %}
+    <div class="grid-summary">
+        {% for t in tendencias %}{{ trend_card(t) }}{% endfor %}
+    </div>
+    {% else %}
+    <div class="card">
+        <p class="subtle">{{ icon("clock", 14) }} Todavía no hay histórico que enseñar.
+            Se guarda una foto de cada proyecto al día, a las 4:30, así que la primera
+            tendencia aparece mañana y con una semana ya se ve la pendiente.</p>
+    </div>
+    {% endif %}
+</section>
 
 <section class="card">
     <h3>{{ icon("activity") }} Trabajos en segundo plano</h3>

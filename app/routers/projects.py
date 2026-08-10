@@ -11,7 +11,7 @@ from ..database import SessionLocal, get_db
 from ..flash import redirect_flash
 from ..models import Project, TaskItem
 from ..security import safe_external_url
-from ..services import github_client, local_scanner, readme, scheduler, telegram
+from ..services import github_client, history, local_scanner, readme, scheduler, telegram
 from ..services.sync import normalize_remote_repo, sync_project
 from ..templating import templates
 
@@ -218,6 +218,49 @@ def tv_mode(request: Request, db: Session = Depends(get_db)):
     })
 
 
+# Métricas del histórico que se pintan como tendencia, en este orden.
+# `stars` se deja fuera a propósito: mide atención de terceros, no trabajo
+# propio, y en un panel personal no dice nada accionable.
+TENDENCIAS = (
+    ("commits_7d", "Commits (7 días)", "git-commit-horizontal"),
+    ("open_prs", "PRs abiertos", "git-pull-request"),
+    ("open_issues", "Issues abiertas", "circle-dot"),
+    ("todo_count", "TODOs en el código", "list-todo"),
+)
+TENDENCIA_DIAS = 90
+
+
+def _tendencias(db: Session, project_id: int | None = None, days: int = TENDENCIA_DIAS) -> list[dict]:
+    """Series del histórico listas para pintar, globales o de un proyecto.
+
+    Devuelve siempre las cuatro métricas aunque estén vacías: así la plantilla
+    puede decir "todavía no hay histórico" en vez de esconder la sección, que es
+    lo que haría pensar que la funcionalidad no existe.
+    """
+    salida = []
+    for campo, etiqueta, icono in TENDENCIAS:
+        puntos = (
+            history.series(db, campo, days)
+            if project_id is None
+            else history.project_series(db, project_id, campo, days)
+        )
+        valores = [valor for _, valor in puntos]
+        salida.append({
+            "campo": campo,
+            "label": etiqueta,
+            "icon": icono,
+            # Días que abarca el dato, no la ventana pedida: con dos semanas de
+            # histórico, "−195 en 90 días" es falso y además invita a leer la
+            # pendiente como si fuera trimestral.
+            "dias": (puntos[-1][0] - puntos[0][0]).days if len(puntos) > 1 else 0,
+            "puntos": puntos,
+            "primero": valores[0] if valores else None,
+            "actual": valores[-1] if valores else None,
+            "delta": (valores[-1] - valores[0]) if len(valores) > 1 else None,
+        })
+    return salida
+
+
 @router.get("/estado")
 def system_status(request: Request, db: Session = Depends(get_db)):
     """Salud del propio panel: qué jobs han corrido, cuota de la API y configuración.
@@ -245,6 +288,7 @@ def system_status(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "estado.html", {
         "jobs": jobs,
         "errores": errores,
+        "tendencias": _tendencias(db),
         "rate_limit": github_client.rate_limit,
         "telegram_ok": telegram.is_configured(),
         "github_token": bool(settings.github_token),
@@ -272,6 +316,7 @@ def project_detail(project_id: int, request: Request, db: Session = Depends(get_
         "p": project,
         "commits": commits,
         "todos": todos,
+        "tendencias": _tendencias(db, project.id),
         "readme_html": readme.render(readme_raw, project.repo_url, project.branch) if readme_raw else None,
         "stale_days": settings.stale_project_days,
         "stale_pr_days": settings.stale_pr_days,

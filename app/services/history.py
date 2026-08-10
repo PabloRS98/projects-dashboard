@@ -94,16 +94,20 @@ def refresh_remote_activity(db: Session) -> int:
     return actualizados
 
 
-def series(db: Session, field: str, days: int = 90) -> list[tuple[date, int]]:
-    """Suma diaria de `field` en todos los proyectos, para la gráfica global.
+# Campos que se pueden pedir a las series. Lista blanca porque acaban en un
+# getattr sobre el modelo; hoy no vienen de la URL, pero es el tipo de parámetro
+# que acaba llegando de fuera en cuanto la vista crece.
+CAMPOS_SERIE = {"commits_7d", "open_prs", "open_issues", "stars", "todo_count"}
 
-    `field` se valida contra una lista blanca porque acaba en un getattr sobre el
-    modelo; no viene de la URL hoy, pero es el tipo de parámetro que acaba
-    llegando de fuera en cuanto la vista crece.
-    """
-    allowed = {"commits_7d", "open_prs", "open_issues", "stars", "todo_count"}
-    if field not in allowed:
+
+def _validar_campo(field: str) -> None:
+    if field not in CAMPOS_SERIE:
         raise ValueError("Campo de histórico no permitido: %s" % field)
+
+
+def series(db: Session, field: str, days: int = 90) -> list[tuple[date, int]]:
+    """Suma diaria de `field` en todos los proyectos, para la gráfica global."""
+    _validar_campo(field)
 
     since = date.today() - timedelta(days=days)
     rows = (
@@ -118,3 +122,22 @@ def series(db: Session, field: str, days: int = 90) -> list[tuple[date, int]]:
         if value is not None:
             totals[row.day] = totals.get(row.day, 0) + value
     return sorted(totals.items())
+
+
+def project_series(db: Session, project_id: int, field: str, days: int = 90) -> list[tuple[date, int]]:
+    """Serie diaria de `field` para un solo proyecto, para su ficha.
+
+    Es la misma pregunta que `series` pero acotada: en el panel interesa el
+    agregado ("¿el trabajo pendiente sube o baja?") y en la ficha interesa el
+    proyecto ("¿este en concreto se está atascando?").
+    """
+    _validar_campo(field)
+
+    since = date.today() - timedelta(days=days)
+    rows = (
+        db.query(ProjectSnapshot)
+        .filter(ProjectSnapshot.project_id == project_id, ProjectSnapshot.day >= since)
+        .order_by(ProjectSnapshot.day)
+        .all()
+    )
+    return [(row.day, getattr(row, field)) for row in rows if getattr(row, field) is not None]
