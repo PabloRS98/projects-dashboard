@@ -19,6 +19,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# Las migraciones son parte del despliegue: `init_db` las aplica al arrancar, así
+# que sin ellas el contenedor muere antes de servir la primera petición.
+COPY alembic.ini ./alembic.ini
+COPY migraciones ./migraciones
 
 # Usuario sin privilegios. El cambio real lo hace el entrypoint, no un `USER`
 # aquí: el volumen de /data puede venir de un despliegue anterior con ficheros
