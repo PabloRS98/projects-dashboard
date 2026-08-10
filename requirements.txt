@@ -6,6 +6,10 @@ uvicorn[standard]==0.51.0
 python-multipart==0.0.32
 Jinja2==3.1.6
 SQLAlchemy==2.0.51
+# Migraciones de esquema. Sustituye al `ensure_columns` casero, que solo sabía
+# hacer ADD COLUMN: no podía crear índices, cambiar tipos, añadir un ON DELETE
+# ni llevar registro de versión.
+alembic==1.19.1
 pydantic-settings==2.14.2
 httpx==0.28.1
 APScheduler==3.11.3

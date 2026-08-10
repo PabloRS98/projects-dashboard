@@ -27,6 +27,11 @@ SAME_ORIGIN = {"Origin": "http://testserver"}
 @pytest.fixture(autouse=True)
 def clean_db():
     Base.metadata.drop_all(bind=engine)
+    # `alembic_version` no está en el metadata, así que `drop_all` la deja: sin
+    # borrarla, Alembic creería que el esquema está al día con las tablas ya
+    # borradas y no volvería a crearlas.
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
     init_db()
     yield
 

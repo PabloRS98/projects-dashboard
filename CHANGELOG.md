@@ -149,6 +149,17 @@ razonamiento completo sin buscarlo.
 
 ### Infraestructura
 
+- **[PD-M15]** Migraciones reales con Alembic, en lugar del `ensure_columns`
+  casero. Aquel solo sabía hacer `ALTER TABLE ADD COLUMN`: no podía crear
+  índices, cambiar tipos, añadir un `ON DELETE` ni llevar registro de versión, y
+  eso ya estaba bloqueando trabajo — el `CASCADE` de [PD-A4] quedó declarado en
+  el modelo pero nunca llegó a las bases ya creadas. La primera migración de
+  verdad lo aplica recreando la tabla, que es lo que SQLite exige. Una base
+  anterior a Alembic se detecta, se le completan las columnas que le falten y se
+  marca en la revisión inicial **sola**: pedir un `alembic stamp` a mano dejaría
+  la app rota hasta que alguien lo recordara. Probado contra una copia de la base
+  real: 8 proyectos intactos y la clave foránea pasa de `NO ACTION` a `CASCADE`.
+
 - **[PD-B11]** y **[PD-B10]** El contenedor deja de correr como root. Era la
   única de las tres aplicaciones que lo hacía, y la única que ejecuta
   subprocesos (`git`) sobre rutas que controla el usuario. El cambio va en un
