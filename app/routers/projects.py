@@ -9,7 +9,7 @@ from ..auth import verify_auth
 from ..config import settings
 from ..database import SessionLocal, get_db
 from ..flash import redirect_flash
-from ..models import Project, TaskItem
+from ..models import CI_BAD, Project, TaskItem
 from ..security import ruta_local_valida, safe_external_url
 from ..services import (
     capacidades,
@@ -24,8 +24,6 @@ from ..services.sync import REMOTE_CLIENTS, normalize_remote_repo, sync_project
 from ..templating import templates
 
 router = APIRouter(tags=["proyectos"], dependencies=[Depends(verify_auth)])
-
-CI_BAD = {"failure", "failed", "error", "cancelled", "timed_out"}
 
 # Filtros combinables: se aplican en AND. Cada uno es (etiqueta, icono, predicado).
 FILTERS = {
@@ -177,13 +175,17 @@ def _grouped(projects: list[Project], stale_days: int):
     parados = [p for p in projects
                if not p.is_favorite and not p.is_archived and _is_stale(p, stale_days)]
     archivados = [p for p in projects if p.is_archived]
+    # La clave va aparte del título: el CSS la usa como clase, y sacarla de
+    # `title|lower` funcionaba por casualidad —los cuatro nombres son ASCII y sin
+    # espacios—, así que renombrar "Parados" a "Sin actividad" habría roto los
+    # colores en silencio.
     groups = [
-        ("Favoritos", "star", favoritos),
-        ("Activos", "circle-check", activos),
-        ("Parados", "moon", parados),
-        ("Archivados", "archive", archivados),
+        ("favoritos", "Favoritos", "star", favoritos),
+        ("activos", "Activos", "circle-check", activos),
+        ("parados", "Parados", "moon", parados),
+        ("archivados", "Archivados", "archive", archivados),
     ]
-    return [g for g in groups if g[2]]  # ocultar grupos vacíos
+    return [g for g in groups if g[3]]  # ocultar grupos vacíos
 
 
 def _view_context(db: Session, q: str, filtros: list[str], tag: str | None,

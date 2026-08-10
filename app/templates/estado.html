@@ -29,7 +29,9 @@
 
 <section class="card">
     <h3>{{ icon("activity") }} Trabajos en segundo plano</h3>
-    <p class="hint">Todo el panel se alimenta de estos jobs. Si algo se queda viejo, aquí se ve por qué.</p>
+    <p class="hint">Todo el panel se alimenta de estos jobs. Si algo se queda viejo, aquí se ve por qué.
+        El registro de ejecuciones vive en memoria, así que tras reiniciar el contenedor
+        todos dicen "nunca" hasta que vuelven a correr: eso no significa que estén parados.</p>
     <div class="table-wrap">
         <table class="dense">
             <thead><tr><th></th><th>Trabajo</th><th>Última ejecución</th><th>Resultado</th><th>Próxima</th></tr></thead>

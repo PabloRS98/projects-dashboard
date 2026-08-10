@@ -22,8 +22,9 @@ from . import github_client
 
 logger = logging.getLogger(__name__)
 
-# Un año de histórico: suficiente para ver tendencia anual y sigue siendo
-# despreciable en disco (unas 400 filas por proyecto).
+# Algo más de un año de histórico: con 400 días siempre se puede comparar contra
+# la misma fecha del año pasado aunque el job se salte algún día. Sigue siendo
+# despreciable en disco: unas 400 filas por proyecto.
 KEEP_DAYS = 400
 
 # Peticiones simultáneas al pedir la actividad. El mismo número que

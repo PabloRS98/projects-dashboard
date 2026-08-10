@@ -34,7 +34,7 @@
             </tr>
         </thead>
         <tbody>
-        {% for title, gicon, items in groups %}
+        {% for clave, title, gicon, items in groups %}
             {% for p in items %}
             <tr class="{{ 'archived' if p.is_archived else '' }}">
                 <td>{{ ci_dot(p.ci_status) }}{% if p.is_favorite %}{{ icon("star", 12) }}{% endif %}</td>
@@ -55,8 +55,8 @@
 </section>
 
 {% else %}
-{% for title, gicon, items in groups %}
-<div class="group-head {{ title|lower }}">{{ icon(gicon, 16) }} {{ title }} <span class="count">{{ items|length }}</span></div>
+{% for clave, title, gicon, items in groups %}
+<div class="group-head {{ clave }}">{{ icon(gicon, 16) }} {{ title }} <span class="count">{{ items|length }}</span></div>
 <div class="group-cards">
     {% for p in items %}{% include "_card.html" %}{% endfor %}
 </div>

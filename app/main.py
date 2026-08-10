@@ -76,9 +76,9 @@ async def cabeceras_de_seguridad(request: Request, call_next):
     return response
 
 
-app.include_router(projects.router)
-
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+app.include_router(projects.router)
 
 
 @app.get("/salud")

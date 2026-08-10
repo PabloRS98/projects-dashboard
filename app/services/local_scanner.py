@@ -69,8 +69,11 @@ def discover_repos(root_path: str) -> list[dict]:
                         })
                     else:
                         _scan(full_path, current_depth + 1)
-        except Exception:
-            logger.exception("Fallo al escanear carpeta %s", path)
+        except Exception as exc:  # noqa: BLE001  una carpeta sin permisos no debe abortar el escaneo
+            # warning y no exception: en un escaneo profundo esto puede saltar
+            # por cada carpeta ilegible, y un traceback por cada una llena el log
+            # sin añadir nada que el mensaje no diga ya.
+            logger.warning("Fallo al escanear carpeta %s: %s", path, exc)
 
     _scan(root_path, 1)
     return results
@@ -90,8 +93,10 @@ def _run_git(path: str, args: list[str]) -> str | None:
         if result.returncode != 0:
             return None
         return result.stdout.strip()
-    except Exception:
-        logger.exception("Fallo ejecutando git %s en %s", args, path)
+    except Exception as exc:  # noqa: BLE001  un repo roto no debe tumbar el ciclo
+        # warning y no exception: con un repo corrupto y el ciclo de 15 minutos
+        # esto son 96 tracebacks al día por repo, todos idénticos.
+        logger.warning("Fallo ejecutando git %s en %s: %s", args, path, exc)
         return None
 
 
@@ -180,12 +185,13 @@ def get_recent_commits(path: str, limit: int = 15) -> list[dict]:
         if len(parts) != 4:
             continue
         sha, subject, author, date_str = parts
-        date = None
+        # `fecha` y no `date`: ese nombre sombreaba el módulo `date` importado
+        # arriba, y funcionaba solo porque aquí no se usa.
         try:
-            date = datetime.strptime(date_str[:19], "%Y-%m-%d %H:%M:%S")
+            fecha = datetime.strptime(date_str[:19], "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            date = None
-        commits.append({"sha": sha, "subject": subject, "author": author, "date": date})
+            fecha = None
+        commits.append({"sha": sha, "subject": subject, "author": author, "date": fecha})
     return commits
 
 
