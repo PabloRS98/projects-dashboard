@@ -34,6 +34,16 @@ razonamiento completo sin buscarlo.
   solas porque SQLite no aplica las claves foráneas sin el PRAGMA — y como
   reasigna los ids, un proyecto nuevo podía heredar las tareas de uno borrado.
 
+### Infraestructura
+
+- **[PD-A8]** Se añade `.dockerignore`, que no existía. El `Dockerfile` solo
+  copia `requirements.txt` y `app/`, así que nada de lo excluido llegaba a la
+  imagen — pero el directorio entero viajaba al daemon en cada build y se
+  guardaba en la caché de capas, incluidos el `.env` con el token de GitHub y
+  las bases de datos. Y el día que alguien escriba un `COPY . .`, esos secretos
+  acaban dentro de una imagen que además se construye en CI. Contexto medido:
+  de 5.095 ficheros y 110 MB a **50 ficheros y 0,3 MB**.
+
 ### Seguridad
 
 - **[PD-A7]** Cabeceras de seguridad HTTP: `Content-Security-Policy`,
