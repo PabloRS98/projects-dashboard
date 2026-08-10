@@ -11,7 +11,7 @@ from ..database import SessionLocal, get_db
 from ..flash import redirect_flash
 from ..models import Project, TaskItem
 from ..security import safe_external_url
-from ..services import discovery, github_client, local_scanner, readme, scheduler, telegram
+from ..services import github_client, local_scanner, readme, scheduler, telegram
 from ..services.sync import normalize_remote_repo, sync_project
 from ..templating import templates
 
@@ -377,23 +377,25 @@ def toggle_archive(request: Request, project_id: int, db: Session = Depends(get_
 
 
 @router.post("/escanear")
-def scan_local_repos(db: Session = Depends(get_db)):
-    """Descubrimiento a demanda: el mismo que corre solo cada `discovery_minutes`."""
-    result = discovery.run_discovery(db)
-    partes = ["%d nuevos en disco" % result["nuevos"]]
-    if result["remotos_nuevos"]:
-        partes.append("%d desde GitHub" % result["remotos_nuevos"])
-    if result["enlazados"]:
-        partes.append("%d enlazados a su remoto" % result["enlazados"])
-    if result["perdidos"]:
-        partes.append("%d con ruta desaparecida" % result["perdidos"])
+def scan_local_repos(background: BackgroundTasks):
+    """Descubrimiento a demanda: el mismo que corre solo cada `discovery_minutes`.
 
-    categoria = "success"
-    msg = "Descubrimiento: " + ", ".join(partes)
-    if result["remote_error"]:
-        msg += " · GitHub: %s" % result["remote_error"]
-        categoria = "error"
-    return redirect_flash("/", msg, categoria)
+    En segundo plano por el mismo motivo que `_sync_in_background`, y con más
+    razón: es la operación más cara de todas. Recorre el disco hasta
+    `PROJECTS_SCAN_DEPTH` niveles invocando `git` por cada repo, cuenta los TODOs
+    de los nuevos y pide hasta cinco páginas a la API de GitHub. En la primera
+    ejecución sobre una cuenta con treinta repos eso son minutos — justo cuando
+    más se usa el botón.
+
+    Se encola `scheduler.run_discovery` y no `discovery.run_discovery` a
+    propósito: la versión del scheduler abre su propia sesión y deja el resultado
+    en `JOB_STATUS`, que `/estado` ya pinta. No hay que construir nada nuevo para
+    enterarse de cómo fue.
+    """
+    background.add_task(scheduler.run_discovery)
+    return redirect_flash(
+        "/", "Descubrimiento en marcha… El resultado aparece en Estado.", "info"
+    )
 
 
 @router.post("/sincronizar-todo")

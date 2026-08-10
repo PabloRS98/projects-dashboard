@@ -63,6 +63,8 @@ def _job(job_id: str):
 @_job("discovery")
 def run_discovery(db) -> str:
     result = discovery.run_discovery(db)
+    if result.get("ya_en_marcha"):
+        return "ya había uno en marcha, no se lanzó otro"
     parts = ["%d locales nuevos" % result["nuevos"]]
     if result["enlazados"]:
         parts.append("%d enlazados a su remoto" % result["enlazados"])

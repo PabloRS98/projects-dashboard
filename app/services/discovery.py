@@ -13,15 +13,28 @@ Ambas son idempotentes: se pueden ejecutar cada pocas horas sin duplicar nada.
 """
 import logging
 import os
+import threading
 
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Project
 from . import github_client, local_scanner
-from .sync import link_remote_from_git, normalize_remote_repo, remote_from_url, sync_project
+from .sync import link_remote_from_git, normalize_remote_repo, remote_from_url, sync_local
 
 logger = logging.getLogger(__name__)
+
+# El descubrimiento NO sincroniza el remoto, a propósito. `scheduler.py` programa
+# este job deliberadamente antes que los dos ciclos de sync ("si hay repos
+# nuevos, los dos ciclos de sync que arrancan detrás ya los encuentran dados de
+# alta"), así que llamar aquí a `sync_project` duplicaba el trabajo: descubrir 20
+# repos eran 80 peticiones HTTP secuenciales. Sí se hace `sync_local`, que es
+# solo disco y evita que el repo recién descubierto salga en blanco.
+#
+# Guarda de concurrencia: el botón "Descubrir ahora" y el job periódico pueden
+# coincidir, y sin esto serían dos recorridos completos del disco y dos tandas de
+# peticiones a la vez. No bloquea: el segundo se retira y lo dice.
+_en_marcha = threading.Lock()
 
 
 def discover_local(db: Session) -> dict:
@@ -48,7 +61,11 @@ def discover_local(db: Session) -> dict:
         )
         db.add(project)
         db.flush()
-        sync_project(project)
+        sync_local(project)
+        # Commit por proyecto: con uno solo al final, una excepción a mitad del
+        # bucle —o un timeout del proxy cuando esto corría dentro del POST—
+        # tiraba todo el trabajo ya hecho y había que repetirlo entero.
+        db.commit()
         nuevos += 1
 
     # Proyectos ya registrados: enlazar remoto si les falta y revisar la ruta.
@@ -61,13 +78,14 @@ def discover_local(db: Session) -> dict:
             project.local_error = "La ruta local ya no existe"
             project.has_uncommitted_changes = False
             perdidos += 1
+            db.commit()
             continue
         if not missing and project.local_path_missing:
-            sync_project(project)  # la ruta ha vuelto (disco montado de nuevo, etc.)
+            sync_local(project)  # la ruta ha vuelto (disco montado de nuevo, etc.)
         if link_remote_from_git(project):
             enlazados += 1
+        db.commit()
 
-    db.commit()
     return {"nuevos": nuevos, "enlazados": enlazados, "perdidos": perdidos}
 
 
@@ -107,20 +125,37 @@ def discover_remote(db: Session) -> dict:
             remote_repo=normalized,
         )
         db.add(project)
-        db.flush()
-        sync_project(project)
+        # Sin sincronizar: estos proyectos son solo-remoto, así que su única
+        # sincronización posible es la de la API, y de esa se encarga el ciclo
+        # remoto que arranca detrás. Aquí solo se dan de alta.
+        db.commit()
         known.add(normalized.lower())
         nuevos += 1
 
-    db.commit()
     return {"nuevos": nuevos, "error": None}
 
 
+VACIO = {"nuevos": 0, "enlazados": 0, "perdidos": 0, "remotos_nuevos": 0, "remote_error": None}
+
+
 def run_discovery(db: Session) -> dict:
-    """Descubrimiento completo (local + remoto). Lo usan el job y el botón."""
-    result = discover_local(db)
-    remote = discover_remote(db)
-    result["remotos_nuevos"] = remote["nuevos"]
-    result["remote_error"] = remote["error"]
-    logger.info("Descubrimiento: %s", result)
-    return result
+    """Descubrimiento completo (local + remoto). Lo usan el job y el botón.
+
+    Si ya hay uno en marcha se retira y lo indica en `ya_en_marcha`, en vez de
+    duplicar el recorrido del disco y las peticiones a la API.
+    """
+    if not _en_marcha.acquire(blocking=False):
+        logger.info("Descubrimiento ya en marcha: no se lanza otro")
+        return dict(VACIO, ya_en_marcha=True)
+    try:
+        result = discover_local(db)
+        remote = discover_remote(db)
+        result["remotos_nuevos"] = remote["nuevos"]
+        result["remote_error"] = remote["error"]
+        result["ya_en_marcha"] = False
+        logger.info("Descubrimiento: %s", result)
+        return result
+    finally:
+        # En `finally`: si el descubrimiento revienta, la guarda tiene que
+        # soltarse igualmente o no se vuelve a descubrir hasta reiniciar.
+        _en_marcha.release()

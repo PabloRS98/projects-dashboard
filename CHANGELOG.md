@@ -6,6 +6,24 @@ razonamiento completo sin buscarlo.
 
 ## Sin publicar
 
+### Rendimiento
+
+- **[PD-A3]** y **[PD-M17]** El descubrimiento sale de la petición y deja de
+  duplicar el trabajo de los ciclos de sincronización. `/escanear` era la
+  operación más cara de la app —recorrido del disco, `git` por repo, conteo de
+  TODOs y hasta cinco páginas de la API de GitHub— y corría entera dentro del
+  POST: en la primera ejecución sobre una cuenta con treinta repos, minutos de
+  pantalla en blanco, justo cuando más se usa el botón. Ahora se encola y el
+  resultado aparece en `/estado`, que ya mostraba el job `discovery`.
+
+  Además, el descubrimiento ya no llama a `sync_remote`: `scheduler.py` lo
+  programa deliberadamente antes que los dos ciclos de sync para que sean ellos
+  los que sincronicen, así que hacerlo aquí eran 4 peticiones HTTP por repo
+  nuevo repetidas. Se conserva `sync_local`, que es solo disco. Y se commitea
+  por proyecto en vez de una sola vez al final, para que una excepción a mitad
+  del bucle no tire todo el trabajo hecho. Guarda de concurrencia para que el
+  botón y el job periódico no se solapen.
+
 ### Corrección
 
 - **[PD-A5]** `BACKUP_KEEP=0` vuelve a significar lo que dice. `existing[:-0]`
