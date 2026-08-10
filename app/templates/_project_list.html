@@ -63,49 +63,18 @@
 {% endfor %}
 {% endif %}
 
-{# Los diálogos de edición viajan con la lista: si se quedaran fuera, al
-   refrescar por HTMX apuntarían a proyectos que ya no están en pantalla. #}
-{% for title, gicon, items in groups %}{% for p in items %}
-<dialog id="dlg-project-{{ p.id }}">
-    <h3>{{ icon("pencil") }} Editar proyecto</h3>
-    <form method="post" action="/{{ p.id }}/editar" class="form-grid">
-        <div class="field full">
-            <label>Nombre</label>
-            <input type="text" name="name" value="{{ p.name }}" required>
-        </div>
-        <div class="field full">
-            <label>Ruta local (vacío = solo-remoto)</label>
-            <input type="text" name="local_path" value="{{ p.local_path or '' }}" placeholder="{{ scan_path }}/mi-proyecto">
-        </div>
-        <div class="field">
-            <label>Remoto</label>
-            <select name="remote_provider">
-                <option value="">Sin remoto</option>
-                {% for prov in ["github", "gitlab", "bitbucket"] %}
-                <option value="{{ prov }}" {% if p.remote_provider == prov %}selected{% endif %}>{{ prov|capitalize }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="field">
-            <label>owner/repo</label>
-            <input type="text" name="remote_repo" value="{{ p.remote_repo or '' }}">
-        </div>
-        <div class="field full">
-            <label>Descripción</label>
-            <input type="text" name="description" value="{{ p.description or '' }}" placeholder="Se autorrellena desde el forge si la dejas vacía">
-        </div>
-        <div class="field">
-            <label>Web / deploy</label>
-            <input type="url" name="homepage_url" value="{{ p.homepage_url or '' }}" placeholder="https://...">
-        </div>
-        <div class="field">
-            <label>Tags (coma)</label>
-            <input type="text" name="tags" value="{{ p.tags or '' }}" placeholder="web, cli...">
-        </div>
-        <div class="dialog-actions full">
-            <button type="button" class="ghost" data-close-dialog>Cancelar</button>
-            <button type="submit">{{ icon("check", 15) }} Guardar y resincronizar</button>
-        </div>
-    </form>
+{# Un solo diálogo para toda la lista, con el formulario cargado por HTMX al
+   abrirlo (`/{id}/editar-form`).
+
+   Antes se renderizaba uno por proyecto. El comentario de entonces justificaba
+   que viajaran CON la lista —cierto: fuera, al refrescar por HTMX apuntarían a
+   proyectos que ya no están en pantalla— pero no justificaba que fueran N. Con
+   30 proyectos eran 1.200 líneas de marcado y 210 campos de formulario en el
+   DOM para usar uno como mucho, y se pagaba también en cada pulsación del
+   buscador, porque `/lista` devuelve esto entero.
+
+   Este diálogo sigue viajando con la lista, así que el problema que resolvía el
+   diseño anterior sigue resuelto. #}
+<dialog id="dlg-project">
+    <div id="dlg-project-body"></div>
 </dialog>
-{% endfor %}{% endfor %}

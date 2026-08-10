@@ -1,0 +1,52 @@
+{# Formulario de edición de un proyecto.
+
+   Compartido por dos sitios con estrategias distintas a propósito:
+
+   - La ficha de detalle lo incluye directo: allí solo hay un proyecto, así que
+     pedirlo por HTMX sería un viaje de red para nada.
+   - La lista del dashboard lo trae por HTMX al abrir el diálogo. Allí sí
+     importa: renderizarlo por proyecto eran 40 líneas de marcado y 7 campos de
+     formulario cada uno, repetidos en cada carga y en cada pulsación del
+     buscador. Y así el formulario refleja siempre el estado actual del
+     proyecto, no el que tenía cuando se pintó la lista. #}
+{% from "_icons.html" import icon %}
+<h3>{{ icon("pencil") }} Editar proyecto</h3>
+<form method="post" action="/{{ p.id }}/editar" class="form-grid">
+    <div class="field full">
+        <label>Nombre</label>
+        <input type="text" name="name" value="{{ p.name }}" required>
+    </div>
+    <div class="field full">
+        <label>Ruta local (vacío = solo-remoto)</label>
+        <input type="text" name="local_path" value="{{ p.local_path or '' }}" placeholder="{{ scan_path }}/mi-proyecto">
+    </div>
+    <div class="field">
+        <label>Remoto</label>
+        <select name="remote_provider">
+            <option value="">Sin remoto</option>
+            {% for prov in ["github", "gitlab", "bitbucket"] %}
+            <option value="{{ prov }}" {% if p.remote_provider == prov %}selected{% endif %}>{{ prov|capitalize }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label>owner/repo</label>
+        <input type="text" name="remote_repo" value="{{ p.remote_repo or '' }}">
+    </div>
+    <div class="field full">
+        <label>Descripción</label>
+        <input type="text" name="description" value="{{ p.description or '' }}" placeholder="Se autorrellena desde el forge si la dejas vacía">
+    </div>
+    <div class="field">
+        <label>Web / deploy</label>
+        <input type="url" name="homepage_url" value="{{ p.homepage_url or '' }}" placeholder="https://...">
+    </div>
+    <div class="field">
+        <label>Tags (coma)</label>
+        <input type="text" name="tags" value="{{ p.tags or '' }}" placeholder="web, cli...">
+    </div>
+    <div class="dialog-actions full">
+        <button type="button" class="ghost" data-close-dialog>Cancelar</button>
+        <button type="submit">{{ icon("check", 15) }} Guardar y resincronizar</button>
+    </div>
+</form>

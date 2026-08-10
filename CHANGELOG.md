@@ -24,6 +24,15 @@ razonamiento completo sin buscarlo.
 
 ### Rendimiento
 
+- **[PD-M3]** Un solo `<dialog>` de edición para toda la lista, con el
+  formulario cargado por HTMX al abrirlo. Se renderizaba uno completo por
+  proyecto: con 30 proyectos, el HTML de `/lista` pasa de 335 KB a **265 KB** y
+  de 270 elementos de formulario a **60**. Se pagaba también en cada pulsación
+  del buscador. De paso, el formulario refleja ahora el estado actual del
+  proyecto y no el que tenía cuando se pintó la página. El comentario original
+  justificaba que los diálogos viajaran *con* la lista —y tenía razón—, pero no
+  que fueran N; el nuevo sigue viajando con ella.
+
 - **[PD-M1]**, **[PD-M2]** y **[PD-M18]** El camino del dashboard pasa de 41
   consultas SQL por petición a **2**, y de 54 ms a 43 ms. `Project.tasks` era
   lazy y cada tarjeta la tocaba dos veces, así que eran 1 + N consultas por

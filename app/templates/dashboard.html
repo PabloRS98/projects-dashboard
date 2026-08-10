@@ -191,4 +191,22 @@
     paint();
 })();
 </script>
+<script>
+(function () {
+    "use strict";
+    // El diálogo de edición es uno solo para toda la lista y su contenido lo
+    // trae HTMX. Se vacía al lanzar la petición para no enseñar los datos del
+    // proyecto anterior durante el viaje.
+    //
+    // Va aquí y no en un atributo `hx-on`: htmx evalúa esos atributos con
+    // `new Function`, que la CSP de la app no permite (`script-src` no lleva
+    // 'unsafe-eval', y no vamos a abrirlo por esto).
+    document.body.addEventListener("htmx:beforeRequest", function (event) {
+        const boton = event.detail.elt;
+        if (!boton || !boton.matches('[data-open-dialog="#dlg-project"]')) return;
+        const cuerpo = document.getElementById("dlg-project-body");
+        if (cuerpo) cuerpo.innerHTML = '<p class="subtle">Cargando…</p>';
+    });
+})();
+</script>
 {% endblock %}

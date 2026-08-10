@@ -66,7 +66,12 @@
         <form method="post" action="/{{ p.id }}/archivar">
             <button type="submit" class="ghost small icon-btn" title="{{ 'Desarchivar' if p.is_archived else 'Archivar' }}">{{ icon("archive", 13) }}</button>
         </form>
-        <button type="button" class="ghost small icon-btn" title="Editar" data-open-dialog="#dlg-project-{{ p.id }}">{{ icon("pencil", 13) }}</button>
+        {# El formulario llega por HTMX al pulsar: así hay un solo diálogo en la
+           página y sus campos reflejan el estado actual del proyecto, no el que
+           tenía cuando se pintó la lista. #}
+        <button type="button" class="ghost small icon-btn" title="Editar"
+                hx-get="/{{ p.id }}/editar-form" hx-target="#dlg-project-body"
+                data-open-dialog="#dlg-project">{{ icon("pencil", 13) }}</button>
         <form method="post" action="/{{ p.id }}/eliminar" data-confirm="¿Eliminar el proyecto &quot;{{ p.name }}&quot; del dashboard? (no toca el repo)">
             <button type="submit" class="danger small icon-btn" title="Eliminar">{{ icon("trash-2", 13) }}</button>
         </form>
