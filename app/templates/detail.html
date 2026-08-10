@@ -145,46 +145,9 @@
 </section>
 
 <dialog id="dlg-edit">
-    <h3>{{ icon("pencil") }} Editar proyecto</h3>
-    <form method="post" action="/{{ p.id }}/editar" class="form-grid">
-        <div class="field full">
-            <label>Nombre</label>
-            <input type="text" name="name" value="{{ p.name }}" required>
-        </div>
-        <div class="field full">
-            <label>Ruta local (vacío = solo-remoto)</label>
-            <input type="text" name="local_path" value="{{ p.local_path or '' }}">
-        </div>
-        <div class="field">
-            <label>Remoto</label>
-            <select name="remote_provider">
-                <option value="">Sin remoto</option>
-                {% for prov in ["github", "gitlab", "bitbucket"] %}
-                <option value="{{ prov }}" {% if p.remote_provider == prov %}selected{% endif %}>{{ prov|capitalize }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="field">
-            <label>owner/repo</label>
-            <input type="text" name="remote_repo" value="{{ p.remote_repo or '' }}">
-        </div>
-        <div class="field full">
-            <label>Descripción</label>
-            <input type="text" name="description" value="{{ p.description or '' }}">
-        </div>
-        <div class="field">
-            <label>Web / deploy</label>
-            <input type="url" name="homepage_url" value="{{ p.homepage_url or '' }}" placeholder="https://...">
-        </div>
-        <div class="field">
-            <label>Tags (coma)</label>
-            <input type="text" name="tags" value="{{ p.tags or '' }}">
-        </div>
-        <div class="dialog-actions full">
-            <button type="button" class="ghost" data-close-dialog>Cancelar</button>
-            <button type="submit">{{ icon("check", 15) }} Guardar y resincronizar</button>
-        </div>
-    </form>
+    {# Directo y no por HTMX: aquí solo hay un proyecto, así que el viaje de red
+       no compensaría. El marcado es el mismo que usa la lista. #}
+    {% include "_edit_form.html" %}
 </dialog>
 
 {% endblock %}

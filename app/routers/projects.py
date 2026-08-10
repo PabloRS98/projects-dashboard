@@ -351,9 +351,28 @@ def project_detail(project_id: int, request: Request, db: Session = Depends(get_
         "commits": commits,
         "todos": todos,
         "tendencias": _tendencias(db, project.id),
+        "scan_path": settings.local_repos_base_path,
         "readme_html": readme.render(readme_raw, project.repo_url, project.branch) if readme_raw else None,
         "stale_days": settings.stale_project_days,
         "stale_pr_days": settings.stale_pr_days,
+    })
+
+
+@router.get("/{project_id}/editar-form")
+def edit_form(project_id: int, request: Request, db: Session = Depends(get_db)):
+    """Formulario de edición suelto, para el diálogo compartido de la lista.
+
+    Existe para que el dashboard tenga un solo `<dialog>` en vez de uno por
+    proyecto ([PD-M3]). El viaje extra se paga solo al abrir el diálogo, no en
+    cada carga de la lista, y a cambio el formulario refleja el estado actual del
+    proyecto y no el que tenía cuando se pintó la página.
+    """
+    project = db.get(Project, project_id)
+    if not project:
+        return Response(status_code=404)
+    return templates.TemplateResponse(request, "_edit_form.html", {
+        "p": project,
+        "scan_path": settings.local_repos_base_path,
     })
 
 
