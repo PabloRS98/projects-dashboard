@@ -24,6 +24,15 @@ razonamiento completo sin buscarlo.
 
 ### Rendimiento
 
+- **[PD-M1]**, **[PD-M2]** y **[PD-M18]** El camino del dashboard pasa de 41
+  consultas SQL por petición a **2**, y de 54 ms a 43 ms. `Project.tasks` era
+  lazy y cada tarjeta la tocaba dos veces, así que eran 1 + N consultas por
+  carga — y otras 1 + N por cada pulsación en el buscador, que refresca cada
+  300 ms. Se resuelve con `selectinload`. Además `_summary` recorre la lista una
+  vez en lugar de once, y como `_view_context` lo llama dos veces por petición,
+  eran 22 recorridos. Y queda escrito por qué el filtrado se hace en Python y
+  cuándo habría que revisarlo, que antes no estaba en ninguna parte.
+
 - **[PD-M9]** `scan_todos` deja de recorrer el árbol sin límites: se salta los
   ficheros de más de 1 MB (un bundle minificado va en una sola línea, así que el
   iterador de líneas lo carga entero en memoria), amplía los directorios
