@@ -11,7 +11,15 @@ from ..database import SessionLocal, get_db
 from ..flash import redirect_flash
 from ..models import Project, TaskItem
 from ..security import safe_external_url
-from ..services import github_client, history, local_scanner, readme, scheduler, telegram
+from ..services import (
+    capacidades,
+    github_client,
+    history,
+    local_scanner,
+    readme,
+    scheduler,
+    telegram,
+)
 from ..services.sync import normalize_remote_repo, sync_project
 from ..templating import templates
 
@@ -323,6 +331,7 @@ def system_status(request: Request, db: Session = Depends(get_db)):
         "jobs": jobs,
         "errores": errores,
         "tendencias": _tendencias(db),
+        "capacidades": capacidades.tabla(),
         "rate_limit": github_client.rate_limit,
         "telegram_ok": telegram.is_configured(),
         "github_token": bool(settings.github_token),
@@ -352,6 +361,14 @@ def project_detail(project_id: int, request: Request, db: Session = Depends(get_
         "todos": todos,
         "tendencias": _tendencias(db, project.id),
         "scan_path": settings.local_repos_base_path,
+        # Lo que este forge no ofrece, para que la ficha no pinte igual "cero"
+        # que "no hay dato". Solo las métricas que se ven en esta pantalla.
+        "sin_soporte": [
+            capacidades.ETIQUETAS[campo]
+            for campo in ("stars", "oldest_open_pr_days", "commit_weeks")
+            if project.remote_provider and not capacidades.soporta(project.remote_provider, campo)
+        ] if project.remote_provider else [],
+        "proveedor_nombre": capacidades.nombre(project.remote_provider),
         "readme_html": readme.render(readme_raw, project.repo_url, project.branch) if readme_raw else None,
         "stale_days": settings.stale_project_days,
         "stale_pr_days": settings.stale_pr_days,

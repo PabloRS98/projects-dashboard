@@ -8,6 +8,15 @@ razonamiento completo sin buscarlo.
 
 ### Nuevo
 
+- **[PD-M20]** Bitbucket ya informa del estado de sus Pipelines, y `/estado`
+  publica una tabla de **qué dato ofrece cada forge**. El módulo declaraba en su
+  docstring que no soportaba CI, pero la interfaz no lo comunicaba: el filtro "CI
+  en rojo" nunca marcaba un proyecto de Bitbucket, el KPI subestimaba y `/tv`
+  —que existe para dejarlo en un monitor— omitía esos fallos en silencio. Un
+  usuario con proyectos en Bitbucket veía "0 CI en rojo" y confiaba. Además, la
+  ficha de un proyecto dice ahora qué métricas **no da** su proveedor, en vez de
+  pintar un guion indistinguible de un cero.
+
 - **[PD-A2]** Vista de tendencias, en `/estado` (agregada de todo el panel) y en
   la ficha de cada proyecto (la suya). Cierra el hallazgo por el camino A:
   completar el subsistema en vez de retirarlo. Había un modelo `ProjectSnapshot`,
