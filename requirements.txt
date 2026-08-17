@@ -1,19 +1,19 @@
 # Dependencias de ejecución. Instalar con: pip install -r requirements.txt
-fastapi==0.140.8
-uvicorn[standard]==0.51.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
 # Obligatorio para los campos Form(...) de los formularios: FastAPI falla al
 # arrancar si no está, aunque no aparezca en ningún import.
 python-multipart==0.0.32
 Jinja2==3.1.6
-SQLAlchemy==2.0.51
+SQLAlchemy==2.0.52
 # Migraciones de esquema. Sustituye al `ensure_columns` casero, que solo sabía
 # hacer ADD COLUMN: no podía crear índices, cambiar tipos, añadir un ON DELETE
 # ni llevar registro de versión.
 alembic==1.19.1
-pydantic-settings==2.14.2
+pydantic-settings==2.15.0
 httpx==0.28.1
 APScheduler==3.11.3
-Markdown==3.10.2
+Markdown==3.10.3
 # Saneado del README por lista blanca (binding de ammonia). Sustituye al
 # filtrado por regex, que era evitable.
 nh3==0.3.6
