@@ -1,198 +1,161 @@
-# Dashboard de Proyectos
+# Projects Dashboard
 
-Panel personal para vigilar todos tus proyectos en un sitio. Se rellena solo: busca
-los repositorios git de una carpeta, deduce a qué repo remoto pertenece cada uno
-leyendo su `origin`, y a partir de ahí trae estado local (rama, último commit,
-cambios sin commitear, TODOs) y remoto (estrellas, issues, PRs, estado de CI,
-descripción y web). Encima puedes poner notas, tareas y avisos por Telegram.
+[![CI](https://github.com/PabloRS98/projects-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/PabloRS98/projects-dashboard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Mono-usuario y pensado para correr en tu propia máquina o en tu red local.
+A self-hosted personal dashboard to keep track of all your repositories in one
+place. It populates itself automatically: it scans a local folder for git
+repositories, infers each remote from `origin`, and pulls both local state
+(branch, latest commit, uncommitted changes, TODOs) and remote metadata
+(stars, issues, PRs, CI status, description, homepage) from GitHub, GitLab, or
+Bitbucket. You can also attach notes, tasks, and Telegram alerts.
 
-## Puesta en marcha
+Single-user and built to run on your own machine or local network.
 
-### Con Docker (recomendado)
+## Getting Started
+
+### With Docker (recommended)
 
 ```bash
-cp .env.example .env       # ajusta lo que necesites
+cp .env.example .env       # adjust as needed
 mkdir -p data
 LOCAL_REPOS_HOST_PATH=~/repos docker compose up -d --build
 ```
 
-Disponible en <http://localhost:8003> (cambia `HOST_PORT` en el `.env` para otro puerto).
+Available at <http://localhost:8003> (change `HOST_PORT` in `.env` to use another port).
 
-`docker-compose.yml` monta dos volúmenes: `./data` para la base de datos y los
-backups, y tu carpeta de repositorios en `/repos` **en solo lectura** — la app
-nunca escribe en tus repos.
+`docker-compose.yml` mounts two volumes: `./data` for the SQLite database and
+backups, and your repositories directory at `/repos` **read-only** — the app
+never writes to your repositories.
 
-### En local, sin Docker
+### Locally without Docker
 
-Hace falta Python 3.12+ y `git` en el PATH.
+Requires Python 3.12+ and `git` on your `PATH`.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Ajusta DB_PATH y LOCAL_REPOS_BASE_PATH: los valores por defecto (/data, /repos)
-# son rutas del contenedor.
+# Adjust DB_PATH and LOCAL_REPOS_BASE_PATH: defaults (/data, /repos) are container paths.
 uvicorn app.main:app --reload
 ```
 
-## Cómo se rellena solo
+## How Auto-Discovery Works
 
-No hace falta dar de alta nada a mano. Al arrancar, y luego cada
-`DISCOVERY_MINUTES`, la aplicación:
+No manual onboarding needed. On startup and every `DISCOVERY_MINUTES`, the app:
 
-1. **Busca repos git** bajo `LOCAL_REPOS_BASE_PATH`, hasta `PROJECTS_SCAN_DEPTH`
-   niveles de profundidad.
-2. **Deduce el remoto** de cada uno leyendo `git remote get-url origin`, y de ahí
-   saca proveedor y `owner/repo`. Es lo que hace que un repo recién descubierto
-   traiga ya sus estrellas, PRs y estado de CI.
-3. **Da de alta los repos de tu cuenta de GitHub** que no estén clonados aquí
-   (necesita `GITHUB_TOKEN`; se desactiva con `AUTO_IMPORT_GITHUB=false`).
-4. **Marca los que han perdido su ruta local** en vez de dejar datos viejos.
+1. **Scans git repositories** under `LOCAL_REPOS_BASE_PATH`, up to
+   `PROJECTS_SCAN_DEPTH` levels deep.
+2. **Infers the remote** by reading `git remote get-url origin`, extracting the
+   forge provider and `owner/repo` so newly discovered repos immediately fetch
+   stars, PRs, and CI status.
+3. **Imports GitHub repositories** from your account that aren't cloned locally
+   yet (requires `GITHUB_TOKEN`; disable with `AUTO_IMPORT_GITHUB=false`).
+4. **Flags missing local paths** instead of silently keeping stale data.
 
-Lo que escribes tú siempre manda: si corriges el `owner/repo`, la descripción o
-la web de un proyecto, el descubrimiento no los pisa.
+Manual edits always take precedence: if you override a project's `owner/repo`,
+description, or homepage, auto-discovery will not overwrite them.
 
-> Si tus repos están agrupados en subcarpetas (`Aplicaciones Servidor/mi-app`),
-> `PROJECTS_SCAN_DEPTH=1` **no los encuentra**. Sube el valor a 2 o 3.
+> If your repositories are nested inside subfolders (`workspace/group/my-app`),
+> `PROJECTS_SCAN_DEPTH=1` will not reach them — raise it to `2` or `3`.
 
-## Configuración
+## Configuration
 
-Todo se configura por variables de entorno; `.env.example` las lista todas con
-sus valores por defecto. Las que más importan:
+Everything is configured via environment variables; see `.env.example` for the
+full list and defaults. Key settings:
 
-| Variable | Por defecto | Para qué sirve |
+| Variable | Default | Purpose |
 |---|---|---|
-| `LOCAL_REPOS_BASE_PATH` | `/repos` | Carpeta raíz donde se buscan repos git |
-| `PROJECTS_SCAN_DEPTH` | `3` | Niveles de profundidad del escaneo automático |
-| `DB_PATH` | `/data/projects.db` | Fichero SQLite |
-| `HOST_PORT` | `8003` | Puerto publicado por docker-compose |
-| `ENABLE_AUTH` | `false` | Activa la autenticación HTTP Basic |
-| `GITHUB_TOKEN` | vacío | Sube los límites de la API, da acceso a repos privados y habilita el alta automática |
-| `AUTO_IMPORT_GITHUB` | `true` | Da de alta solos los repos de tu cuenta |
-| `DISCOVERY_MINUTES` | `360` | Cada cuánto se buscan proyectos nuevos |
-| `LOCAL_SYNC_MINUTES` | `15` | Cada cuánto se relee el estado git local |
-| `REMOTE_SYNC_MINUTES` | `60` | Cada cuánto se consulta la API remota |
-| `STALE_PROJECT_DAYS` | `30` | Días sin commits para marcar un proyecto como "parado" |
-| `STALE_PR_DAYS` | `7` | Días con un PR abierto para considerarlo estancado |
-| `TELEGRAM_BOT_TOKEN` | vacío | Activa los avisos (junto con `TELEGRAM_CHAT_ID`) |
+| `LOCAL_REPOS_BASE_PATH` | `/repos` | Root folder scanned for git repositories |
+| `PROJECTS_SCAN_DEPTH` | `3` | Directory depth for auto-discovery |
+| `DB_PATH` | `/data/projects.db` | SQLite database file |
+| `HOST_PORT` | `8003` | Port exposed by docker-compose |
+| `ENABLE_AUTH` | `false` | Enables HTTP Basic authentication |
+| `GITHUB_TOKEN` | empty | Increases API rate limits, unlocks private repos and GitHub auto-import |
+| `AUTO_IMPORT_GITHUB` | `true` | Automatically imports repositories from your GitHub account |
+| `DISCOVERY_MINUTES` | `360` | How often to scan for new projects |
+| `LOCAL_SYNC_MINUTES` | `15` | How often to refresh local git status |
+| `REMOTE_SYNC_MINUTES` | `60` | How often to query remote forge APIs |
+| `STALE_PROJECT_DAYS` | `30` | Days without commits before flagging a project as stale |
+| `STALE_PR_DAYS` | `7` | Days an open PR stays untouched before flagging it as stale |
+| `TELEGRAM_BOT_TOKEN` | empty | Enables Telegram alerts (paired with `TELEGRAM_CHAT_ID`) |
 
-## Las vistas
+## Views
 
-- **`/`** — el panel. Buscador incremental, orden configurable, filtros que se
-  combinan y dos presentaciones (tarjetas o tabla densa). Los KPI de arriba son
-  enlaces a la vista ya filtrada.
-- **`/proyecto/{id}`** — ficha: README (plegado), últimos commits, TODOs con
-  `fichero:línea`, actividad por semanas, notas y tareas.
-- **`/tv`** — modo pantalla: solo el resumen y lo que necesita atención, sin
-  acciones y recargándose sola cada minuto. Para dejarlo en un monitor.
-- **`/estado`** — salud del propio panel: cuándo corrió cada job y con qué
-  resultado, cuota restante de la API de GitHub, si Telegram está configurado y
-  la configuración activa. Es el primer sitio donde mirar si los datos no se
-  mueven.
+- **`/`** — Main dashboard with incremental search, custom sorting, composable
+  filters, and two layouts (cards or dense table). Top KPIs link directly to
+  filtered views.
+- **`/proyecto/{id}`** — Project detail view: collapsible README, recent commits,
+  TODOs with `file:line`, weekly activity, notes, and tasks.
+- **`/tv`** — Kiosk/TV mode: read-only summary highlighting items that need
+  attention, auto-refreshing every minute.
+- **`/estado`** — Dashboard health page: last run time and status of every
+  background job, remaining GitHub API quota, Telegram status, and active config.
 
-## Diagnóstico de errores
+## Error Diagnostics
 
-Los fallos contra la API se traducen a la causa concreta, porque el arreglo es
-distinto en cada caso: token caducado (401), sin permiso sobre el repo (403),
-cuota agotada (con la hora a la que se repone), repo inexistente o privado (404),
-forge caído (5xx), timeout y fallo de red.
+Remote API failures are mapped to actionable root causes: expired token (401),
+missing repository permissions (403), rate limit exhausted with reset timestamp,
+missing/private repository (404), upstream forge outage (5xx), timeouts, and
+network errors.
 
-## Seguridad
+## Security
 
-La aplicación no tiene modelo multiusuario: quien llega a ella puede verlo y
-cambiarlo todo. Antes de sacarla de `localhost`:
+This is a single-user app: anyone who can reach it can view and edit everything.
+Before exposing it beyond `localhost`:
 
-- **Activa `ENABLE_AUTH=true` y pon una contraseña propia.** Con la
-  autenticación activada la app se niega a arrancar si `AUTH_PASSWORD` sigue
-  siendo `changeme` o tiene menos de 8 caracteres.
-- **Ponla detrás de TLS.** HTTP Basic manda las credenciales en claro en cada
-  petición: sin HTTPS por delante (proxy inverso o VPN) viajan legibles.
-- El `docker-compose.yml` publica el puerto solo en `127.0.0.1` a propósito.
-  Si lo cambias a `0.0.0.0`, asegúrate de tener lo anterior resuelto.
+- **Set `ENABLE_AUTH=true` and choose a strong password.** When auth is enabled,
+  the app refuses to start if `AUTH_PASSWORD` is left as `changeme` or is shorter
+  than 8 characters.
+- **Put it behind TLS.** HTTP Basic sends credentials in plaintext on every
+  request — always terminate HTTPS via a reverse proxy or VPN.
+- `docker-compose.yml` binds to `127.0.0.1` by default. If you change it to
+  `0.0.0.0`, make sure auth and TLS are in place first.
 
-Protecciones ya incorporadas: comprobación de origen contra CSRF en toda
-petición que cambia estado, cabeceras de seguridad HTTP (CSP, `nosniff`,
-`Referrer-Policy`), redirecciones limitadas a rutas internas, saneado del README
-por lista blanca (`nh3`) y validación de esquemas en las URLs que introduce el
-usuario.
+Built-in protections: origin validation against CSRF on every state-changing
+request, HTTP security headers (CSP, `nosniff`, `Referrer-Policy`), internal-only
+redirect validation, allowlist-based README sanitization (`nh3`), and URL scheme
+validation for user-supplied links.
 
-### Los secretos del `.env`
+If you access the app behind a reverse proxy under a different hostname, add it
+to `TRUSTED_ORIGINS` (comma-separated) so CSRF origin checks allow form
+submissions.
 
-El `.env` está en `.gitignore`, así que no llega al repositorio. Eso evita
-publicarlo, pero no lo respalda: si se pierde este disco, se pierde la
-configuración y hay que regenerar el token de GitHub y el del bot de Telegram.
-
-Las tres aplicaciones de esta carpeta comparten un `../.sops.yaml` con una clave
-`age` para versionar el `.env` cifrado:
-
-```bash
-sops --encrypt .env > .env.enc     # se versiona
-sops --decrypt .env.enc > .env     # al reconstruir el despliegue
-```
-
-**Lo importante no es el cifrado, es la clave.** Un `.env.enc` sin la clave
-privada para descifrarlo no sirve de nada, y la clave no está en el repositorio
-por definición: va en `%APPDATA%\sops\age\keys.txt` (o donde apunte
-`SOPS_AGE_KEY_FILE`) y hay que respaldarla aparte — gestor de contraseñas o
-copia fuera de esta máquina.
-
-> **Estado actual:** este proyecto todavía no tiene `.env.enc`. En la máquina de
-> desarrollo no están instalados `sops` ni `age`, y la clave privada de
-> `../.sops.yaml` no aparece en ninguna de las rutas estándar. Hasta que la clave
-> esté localizada y respaldada, cifrar aquí no aportaría nada. Ver [PD-A9].
-
-Si accedes por un nombre de host distinto al que ve el proxy inverso, añádelo a
-`TRUSTED_ORIGINS` (separados por comas) o la comprobación CSRF rechazará los
-formularios.
-
-## Desarrollo
+## Development
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 346 pruebas
+pytest -q
 ruff check .
 ```
 
-Las pruebas del escáner y del descubrimiento crean repositorios git reales en
-carpetas temporales, así que necesitas `git` con `user.name` y `user.email`
-configurados.
+The scanner and discovery tests create real git repositories in temporary
+directories, so `git` must have `user.name` and `user.email` configured.
 
-## Cómo está organizado
+## Architecture
 
-```
+```text
 app/
-  main.py          punto de entrada, middleware y arranque del scheduler
-  config.py        configuración por entorno (pydantic-settings)
-  database.py      motor SQLite + migración ligera de columnas
-  models.py        Project, TaskItem y ProjectSnapshot (histórico)
-  security.py      CSRF, redirecciones seguras, validación de URLs
-  auth.py          HTTP Basic opcional
-  routers/         vistas HTTP
+  main.py          entrypoint, middleware and scheduler startup
+  config.py        environment configuration (pydantic-settings)
+  database.py      SQLite engine and lightweight column migrations
+  models.py        Project, TaskItem and ProjectSnapshot
+  security.py      CSRF, safe redirects and URL validation
+  auth.py          optional HTTP Basic auth
+  routers/         HTTP views
   services/
-    local_scanner.py  git local: estado, commits, TODOs, remoto, actividad
-    discovery.py      alta automática (disco + cuenta de GitHub)
-    sync.py           sincronización local y remota
-    forge_errors.py   traducción de fallos HTTP a un diagnóstico accionable
-    history.py        snapshots diarios y series para las gráficas
-    scheduler.py      jobs de fondo y registro de su último resultado
-    alerts.py         avisos de Telegram con deduplicación
+    local_scanner.py  local git: status, commits, TODOs, remote, activity
+    discovery.py      auto-discovery (disk + GitHub account)
+    sync.py           local and remote sync orchestration
+    forge_errors.py   HTTP failure translation into actionable diagnostics
+    history.py        daily snapshots and chart series
+    scheduler.py      background jobs and last-run tracking
+    alerts.py         deduplicated Telegram notifications
   templates/       Jinja2 + HTMX
 ```
 
-La sincronización va en ciclos separados a propósito: el descubrimiento recorre
-el disco y va muy espaciado, el local (git) es barato y corre a menudo, y el
-remoto se espacia para no chocar con los límites de la API. El remoto además va
-en paralelo acotado (5 hilos) y se corta solo si la cuota se agota, para que un
-panel con muchos repos no tarde minutos. Cada ciclo guarda su propio error para
-que uno no borre el diagnóstico del otro.
-
-Las mutaciones que tocan la red (alta, edición, "sincronizar todo") responden
-inmediatamente y hacen el trabajo en segundo plano: antes el navegador se
-quedaba colgado hasta 40 segundos por proyecto.
-
-El esquema se migra con `ensure_columns` (ALTER TABLE ADD COLUMN sobre columnas
-nullable o con valor por defecto), sin Alembic: suficiente para lo que hace esta
-aplicación, pero conviene saberlo antes de intentar un cambio de esquema que
-requiera reescribir datos.
+Sync runs in three decoupled cycles: disk discovery runs infrequently, local git
+scanning is cheap and runs often, and remote API sync is spaced out to respect
+rate limits (running with bounded concurrency and stopping early if quota runs
+out). Each cycle tracks its own error state independently so failures don't mask
+each other.

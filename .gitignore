@@ -31,6 +31,10 @@ venv/
 *.swp
 *.swo
 
+# AI agent local config / state
+.claude/
+.freebuff/
+
 # OS
 .DS_Store
 Thumbs.db

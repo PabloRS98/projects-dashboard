@@ -16,21 +16,20 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Linter
+      - name: Lint
         run: ruff check .
 
       - name: Tests
-        # Las pruebas del escáner crean repos git de verdad, así que necesitan
-        # una identidad configurada.
+        # Scanner tests create real git repositories and require a configured git identity.
         run: |
-          git config --global user.email "ci@ejemplo.tld"
+          git config --global user.email "ci@example.com"
           git config --global user.name "CI"
           pytest -q
 
-  auditoria:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,10 +39,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # Las dependencias van pinneadas, así que sin esto una vulnerabilidad
-      # publicada no se entera nadie hasta que alguien mira a mano. Vigilar
-      # sobre todo nh3: es el saneador del HTML de terceros.
-      - name: Auditar dependencias
+      # Dependencies are pinned; pip-audit flags newly disclosed CVEs (especially nh3).
+      - name: Audit dependencies
         run: |
           pip install pip-audit
           pip-audit -r requirements.txt
@@ -52,43 +49,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Construir la imagen
+      - name: Build image
         run: docker build -t projects-dashboard:ci .
 
-      # El CI construía la imagen y no la arrancaba nunca: un fallo de arranque
-      # —una variable que falta, un fichero que no se copia— no lo caza ninguna
-      # prueba unitaria porque no está en el código.
-      - name: Levantarla y comprobar que responde
+      # Smoke-test container startup against real endpoints.
+      - name: Start container and check health
         run: |
           docker run -d --name pd-ci -e DB_PATH=/tmp/ci.db -e ENABLE_AUTH=false \
             -p 8000:8000 projects-dashboard:ci
-          for intento in $(seq 1 30); do
+          for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8000/salud > /dev/null; then
-              echo "arrancó al intento $intento"
+              echo "started on attempt $attempt"
               break
             fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:8000/salud
 
-      - name: Pedir las rutas principales
+      - name: Check core routes
         run: |
-          for ruta in / /lista /estado /tv /salud; do
-            codigo=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8000$ruta")
-            echo "$ruta -> $codigo"
-            [ "$codigo" = "200" ] || exit 1
+          for route in / /lista /estado /tv /salud; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8000$route")
+            echo "$route -> $code"
+            [ "$code" = "200" ] || exit 1
           done
 
-      - name: Comprobar que no corre como root
-        # Se lee el UID del PID 1, que es el uvicorn que arranca el entrypoint.
-        # `docker exec ... id -u` NO vale: exec entra con el usuario por defecto
-        # de la imagen (root), no con el del proceso que está corriendo, así que
-        # diría 0 aunque la app estuviera bien.
+      - name: Verify non-root process
+        # Read PID 1 UID (uvicorn); `docker exec ... id -u` would inspect the exec shell instead.
         run: |
           uid=$(docker exec pd-ci awk '/^Uid:/ {print $2}' /proc/1/status)
-          echo "uid del proceso principal: $uid"
+          echo "main process uid: $uid"
           [ "$uid" != "0" ] || exit 1
 
-      - name: Registro del contenedor
+      - name: Container logs
         if: always()
         run: docker logs pd-ci || true
